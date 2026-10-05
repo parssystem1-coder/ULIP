@@ -140,3 +140,17 @@ ULIP_PG_URL=postgresql://postgres:postgres@localhost:55432/ulip npm test
 (00–12)** in `prompts/phases/` + `docs/implementation/IMPLEMENTATION-PLAN.md`.
 See `docs/REMEDIATION-REPORT.md` for the full before/after of the architecture
 remediation.
+
+## Phase 15 — Real Discovery (implemented)
+
+Discovery is live end-to-end: `POST /discovery/search` (Idempotency-Key
+required) persists a DB-backed job, enqueues via BullMQ (transport only),
+and the worker runs the real pipeline — source connector → immutable raw
+snapshot → Persian-aware normalization → dedup/entity-resolution → lead at
+`ANALYSIS_PENDING`. Connector resolution is honest by design
+(`UNKNOWN_SOURCE_TYPE` / `NOT_CONFIGURED` / `UNSUPPORTED` / `RESOLVED`,
+ADR-027): an authorized Instagram adapter is **not** configured, so Instagram
+stays NOT_CONFIGURED/UNSUPPORTED; local E2E uses the deterministic fake
+provider behind an explicit `allowFake: true` opt-in. No scraping, no
+anti-bot bypass, ever. See `docs/adr/ADR-027-real-discovery-pipeline.md` and
+`prompts/phases/PHASE-15-REAL-DISCOVERY.md`.

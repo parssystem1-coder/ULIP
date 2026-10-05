@@ -112,3 +112,19 @@ blueprint/
 ```
 
 Everything else keeps its previous marker (blueprint/skeleton/fake provider).
+
+## Phase 15 additions (real discovery — implemented)
+
+```text
+blueprint/
+├── packages/discovery/      [I] @ulip/discovery — connector registry (honest gates),
+│                                Persian normalizer, DB raw store, DB entity resolver,
+│                                real flow + deterministic fake provider + tests
+└── apps/worker/test/        [I] connector registry tests (NOT_CONFIGURED/UNSUPPORTED gates)
+
+docs/adr/ADR-027-real-discovery-pipeline.md    [I] pipeline + honesty boundaries
+prompts/phases/PHASE-15-REAL-DISCOVERY.md      [I] phase spec
+```
+
+Discovery status change: worker DISCOVERY flow upgraded [skeleton→implemented];
+`POST /discovery/search` + `GET /discovery/jobs/{id}` implemented per OPENAPI.

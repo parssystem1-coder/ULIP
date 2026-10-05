@@ -92,3 +92,48 @@ everything not listed remains blueprint/skeleton (see REPOSITORY-FILE-TREE).
   → lead → campaign → persistent job → worker processed → API SUCCEEDED;
   API↔PG↔Redis↔Worker integration tests 5/5 green.
 - Jev is NOT integrated: optional `DecisionProvider` contract unchanged.
+
+## Phase 15 — Real Discovery & First Source Integration (implemented)
+
+Discovery is no longer a stub. The production path runs the real pipeline:
+
+```text
+Discovery Request → Source Connector → RawEntity → raw snapshot persistence
+→ Normalization (Persian-aware, deterministic) → Deduplication / Entity
+Resolution (identity keys) → Lead creation/update → ANALYSIS_PENDING
+```
+
+- **packages/discovery** (`@ulip/discovery`) — the pipeline core:
+  `ConnectorRegistry` (honest resolution: UNKNOWN_SOURCE_TYPE /
+  NOT_CONFIGURED / UNSUPPORTED / RESOLVED), `PersianAwareNormalizer`
+  (ADR-019 alias keys + business-model hints), `DbRawEntityStore`
+  (immutable raw_entities + currents pointer, content-hash dedup),
+  `DbEntityResolver` (exact `lead_identities(source_id, external_id)` key;
+  same-name inside a tenant creates an entity_resolution_candidates row for
+  review instead of a silent merge), canonical LEAD_TRANSITION_TABLE events
+  applied conditionally (deterministic, idempotent).
+- **First source integration** — the production boundary is
+  `ConfiguredHttpApiConnectorFactory` (INSTAGRAM / HTTP_API): validates
+  tenant-supplied authorized-API credentials (provider + https base URL +
+  token) at config time with NO network. It advertises NO discovery
+  capability until a real authorized adapter is implemented — configured
+  discovery over it fails with UNSUPPORTED, never a silent fake. No scraping,
+  no CAPTCHA/anti-bot bypass, no session extraction (ADR-013/027).
+- **Deterministic fake provider** — a real LeadSourceConnector over a fixed
+  dataset for local E2E; refused by the registry unless explicitly allowed
+  (`allowFake` on the request + `allowDeterministicFakes`).
+- **API** — `POST /discovery/search` (OPENAPI.yaml as source of truth,
+  Idempotency-Key required, replays return the original job; 409 on
+  SOURCE_NOT_ACTIVE / IDEMPOTENCY_IN_FLIGHT; universal business-model filters
+  businessType/industry/specialty/subSpecialty/brand/location) and
+  `GET /discovery/jobs/{jobId}`.
+- **Worker** — DISCOVERY jobs execute the real pipeline via the registry;
+  DB stays the source of truth, BullMQ transport-only; failures map to
+  BAD_REQUEST / NOT_CONFIGURED / WORKER_ERROR with job_events audit trail
+  and request-id/correlation context end-to-end.
+- **Verified** (real stack): discovery E2E with the fake provider green
+  (API↔PG↔Redis↔Worker), raw rows + RULE classifications observable in
+  PostgreSQL, repeats deduplicated (no new raw revisions, leads UPDATED not
+  duplicated), tenant isolation + 401 + idempotency replay tested.
+  Instagram status: configured-but-unimplemented boundary, NOT_CONFIGURED
+  without credentials, UNSUPPORTED capability — honest, per ADR-027.

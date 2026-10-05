@@ -75,6 +75,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@ulip/discovery':
+        specifier: workspace:*
+        version: link:../../packages/discovery
       '@ulip/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -116,6 +119,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ulip/discovery':
+        specifier: workspace:*
+        version: link:../../packages/discovery
       '@ulip/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -169,6 +175,28 @@ importers:
         version: 5.9.3
 
   packages/connectors:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/discovery:
+    dependencies:
+      '@ulip/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      '@ulip/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ulip/orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
+      '@ulip/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

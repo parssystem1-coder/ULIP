@@ -533,3 +533,24 @@ GET  /outreach/campaigns/{id}/report       پیشرفت + گزارش ارسال
 
 جزئیات schema در `database/schema/schema.sql` (جدول `idempotency_keys`) و
 معناشناسی کامل در OPENAPI.yaml.
+
+# 25. Discovery (Phase 15, ADR-027)
+
+`POST /discovery/search` — create a discovery job (OPENAPI.yaml is canonical):
+
+- Headers: `Idempotency-Key` (required; replay returns the original 202 job),
+  `Authorization: Bearer <api key>`.
+- Body: `{ sourceId, query?, filters?, maxCandidates?, cursor?, allowFake? }`;
+  `filters` carry the universal business model as strings:
+  `businessType, industry, specialty, subSpecialty, brand, location`
+  (e.g. Wholesaler/Printing/Printer Parts/HP/Tehran).
+- Responses: `202` Job (with `transport.enqueued` honesty flag) · `400`
+  validation or missing key · `404` source not in tenant · `409`
+  `SOURCE_NOT_ACTIVE` / `IDEMPOTENCY_IN_FLIGHT` · `401` bad key.
+- `GET /discovery/jobs/{jobId}` — tenant-scoped job status
+  (404 for other tenants' jobs; non-DISCOVERY jobs are not visible here).
+
+Worker side executes the REAL pipeline: connector → raw snapshot
+(immutable, content-hash dedup) → Persian-aware normalization → dedup/ER →
+lead → `ANALYSIS_PENDING`. Failures are honest: `NOT_CONFIGURED` (missing
+credentials), `BAD_REQUEST` (malformed payload), `WORKER_ERROR`.

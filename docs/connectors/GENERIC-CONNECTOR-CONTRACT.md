@@ -59,3 +59,21 @@ types it — this is the single sanctioned boundary. Every declared capability
 (`profile_search`, `profile_fetch`, `content_fetch`, `image_fetch`, `location`,
 `engagement_metrics`) must be checked via `supports()` before use; unsupported
 operations raise `CapabilityNotSupportedError` instead of returning empty data.
+
+## Phase 15: resolution & registration (ADR-027)
+
+Connector factories register per source type in `ConnectorRegistry`
+(`@ulip/discovery`). Resolution outcomes are honest by construction:
+
+- `UNKNOWN_SOURCE_TYPE` — nothing registered for the type.
+- `NOT_CONFIGURED` — factory's `canBuild(config)` refused (missing/invalid
+  credentials; validated without network).
+- `UNSUPPORTED` — connector lacks `profile_search`, or is a deterministic
+  fake used outside explicit E2E opt-in.
+- `RESOLVED` — usable; capability checks still gate every call.
+
+Registered today: `INSTAGRAM`/`HTTP_API` (ConfiguredHttpApiConnectorFactory —
+credential-validating production boundary, advertises nothing until a real
+authorized adapter exists) and `FAKE` (DeterministicFakeConnectorFactory —
+E2E only). Registering the next authorized provider is one factory + one
+`registry.register(...)` call; pipeline/API/worker/storage stay unchanged.

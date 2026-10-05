@@ -58,3 +58,11 @@ Real runtime exists: Next.js web shell, HTTP API (sources/taxonomy/leads/
 campaigns/jobs/health), BullMQ worker on the persistent Job model, Dockerized
 PostgreSQL + Redis, migration runner, smoke flow verified end-to-end.
 Jev remains unplugged by design (optional DecisionProvider).
+
+## Phase 15 — Real Discovery & First Source Integration (shipped)
+
+Real, provider-agnostic discovery pipeline (raw → normalized → dedup/ER →
+lead → ANALYSIS_PENDING) behind authorized-connector boundaries. First
+adapter: configured HTTP-API/Instagram boundary (honest NOT_CONFIGURED /
+UNSUPPORTED) + deterministic fake provider for local E2E. Jev remains
+unplugged; analysis classification hints are RULE-sourced, AI layers next.

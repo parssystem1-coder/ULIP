@@ -3,6 +3,7 @@
  * Single Database instance; connections are pooled and closed on shutdown.
  */
 
+import { ConnectorRegistry, ConfiguredHttpApiConnectorFactory, DeterministicFakeConnectorFactory } from '@ulip/discovery';
 import { Database, JobQueue, loadEnv, Logger, type Env } from '@ulip/runtime';
 import {
   CampaignRepository,
@@ -27,6 +28,8 @@ export interface AppContext {
   jobs: JobRepository;
   /** Redis/BullMQ transport for persistent jobs (transport ONLY, ADR-016). */
   queue: JobQueue;
+  /** Connector factories for capability validation (Phase 15, ADR-027). */
+  connectorRegistry: ConnectorRegistry;
   close(): Promise<void>;
 }
 
@@ -35,6 +38,10 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
   const log = new Logger(env.LOG_LEVEL, { app: env.APP_NAME, env: env.NODE_ENV });
   const db = new Database({ connectionString: env.DATABASE_URL, max: 10 });
   const queue = new JobQueue(env.REDIS_URL);
+  const connectorRegistry = new ConnectorRegistry();
+  connectorRegistry.register(new ConfiguredHttpApiConnectorFactory('HTTP_API'));
+  connectorRegistry.register(new ConfiguredHttpApiConnectorFactory('INSTAGRAM'));
+  connectorRegistry.register(new DeterministicFakeConnectorFactory());
 
   const ctx: AppContext = {
     env,
@@ -47,7 +54,8 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
     leads: new LeadRepository(db),
     campaigns: new CampaignRepository(db),
     jobs: new JobRepository(db),
-    queue: new JobQueue(env.REDIS_URL),
+    queue,
+    connectorRegistry,
     async close(): Promise<void> {
       await db.close();
       await queue.close().catch(() => undefined);

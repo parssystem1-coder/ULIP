@@ -121,17 +121,31 @@ paths:
               $ref: '#/components/schemas/DiscoveryRequest'
       responses:
         '202':
-          description: Accepted
+          description: Accepted (job persisted; transport.enqueued reports BullMQ state)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Job'
         '400':
-          description: Validation error
+          description: Validation error or missing Idempotency-Key (IDEMPOTENCY_KEY_REQUIRED)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Source not found in tenant (tenant-scoped)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+        '409':
+          description: |
+            Conflict: SOURCE_NOT_ACTIVE (source paused/disabled) or
+            IDEMPOTENCY_IN_FLIGHT (identical request still processing).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '402':
           description: Usage quota exceeded
           content:
@@ -1327,9 +1341,30 @@ components:
       properties:
         sourceId: { type: string, format: uuid }
         query: { type: string, example: "آرایشگران شیراز" }
-        filters: { type: object, additionalProperties: { type: string } }
+        filters:
+          type: object
+          description: >-
+            Universal business model as string filters: businessType, industry,
+            specialty, subSpecialty, brand, location. Example: "HP printer parts
+            wholesalers in Tehran" maps to businessType=Wholesaler,
+            industry=Printing, specialty=Printer Parts, brand=HP, location=Tehran.
+          additionalProperties: { type: string }
+          example:
+            businessType: Wholesaler
+            industry: Printing
+            specialty: Printer Parts
+            brand: HP
+            location: Tehran
         analysisMode: { $ref: '#/components/schemas/AnalysisMode' }
         maxCandidates: { type: integer, minimum: 1, maximum: 10000 }
+        cursor: { type: string, description: opaque pagination cursor from a previous page }
+        allowFake:
+          type: boolean
+          default: false
+          description: >-
+            Local E2E ONLY: explicitly opts into the deterministic fake provider
+            registered for source type FAKE. Production source types are never
+            affected.
     JobStatus:
       type: string
       enum: [PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLED, SKIPPED]

@@ -56,10 +56,10 @@ let key: string;
   console.log('✔ tenant + api key ready');
 }
 
-// 3. source
+// 3. source (FAKE = deterministic E2E provider; production types require real credentials)
 let sourceId: string;
 {
-  const { status, body } = await api('/sources', { method: 'POST', key, body: JSON.stringify({ type: 'INSTAGRAM', name: 'smoke-src' }) });
+  const { status, body } = await api('/sources', { method: 'POST', key, body: JSON.stringify({ type: 'FAKE', name: 'smoke-src', config: {} }) });
   if (status !== 201) fail('create source', { status, body });
   sourceId = body.id;
   console.log('✔ source created', sourceId);
@@ -107,17 +107,19 @@ let leadId: string;
   console.log('✔ campaign created', body.id);
 }
 
-// 7. persistent job (DISCOVERY over the created source)
+// 7. persistent job — REAL discovery pipeline (Phase 15): connector → raw →
+// normalize → dedup/ER → lead. allowFake opts into the deterministic E2E
+// provider explicitly; production source types never use it.
 let jobId: string;
 {
   const { status, body } = await api('/jobs', {
     method: 'POST',
     key,
-    body: JSON.stringify({ type: 'DISCOVERY', payload: { sourceId } }),
+    body: JSON.stringify({ type: 'DISCOVERY', payload: { sourceId, allowFake: true, maxCandidates: 10 } }),
   });
   if (status !== 202) fail('create job', { status, body });
   jobId = body.id;
-  console.log('✔ persistent job created', jobId);
+  console.log('✔ persistent discovery job created', jobId);
 }
 
 // 8. wait for worker completion (DB is truth; API reports it)

@@ -1,2 +1,2 @@
-export * from './contracts.js';
-export * from './persian-normalize.js';
+export * from './contracts.ts';
+export * from './persian-normalize.ts';

@@ -11,10 +11,12 @@ import { compose, type AppContext } from './composer.ts';
 import {
   bootstrapHandler,
   createCampaign,
+  createDiscovery,
   createJob,
   createLead,
   createSource,
   createTaxonomy,
+  getDiscoveryJob,
   getJob,
   healthHandler,
   listCampaigns,
@@ -55,6 +57,10 @@ export async function createApiServer(app: AppContext): Promise<Server> {
   router.add('GET', '/jobs', listJobs(app));
   router.add('POST', '/jobs', createJob(app));
   router.add('GET', '/jobs/:jobId', getJob(app));
+
+  // discovery (Phase 15, ADR-027) — OPENAPI.yaml /discovery/*
+  router.add('POST', '/discovery/search', createDiscovery(app));
+  router.add('GET', '/discovery/jobs/:jobId', getDiscoveryJob(app));
 
   const handle = pipeline(app, router);
 
