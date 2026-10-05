@@ -1,0 +1,1162 @@
+openapi: 3.0.3
+info:
+  title: ULIP API
+  version: 2.0.0
+  description: |
+    Universal Lead Intelligence Platform REST API — AUTHORITATIVE contract.
+
+    This file is the single source of truth for the API surface (ADR-020).
+    docs/api/API.md is a narrative companion and must not drift from this file;
+    when they disagree, this file wins.
+
+    Conventions:
+      - All mutations that can be repeated accept an `Idempotency-Key` header
+        (scoped per tenant + endpoint; replay returns the original response).
+      - Tenant context is resolved from the authenticated token, never from
+        client-supplied values.
+      - Errors use the reusable ApiError schema (see components).
+      - Job-initiating endpoints return 202 with a Job resource.
+security:
+  - bearerAuth: []
+servers:
+  - url: /api/v1
+tags:
+  - name: System
+  - name: Sources
+  - name: Discovery
+  - name: Leads
+  - name: Analysis
+  - name: Evidence
+  - name: Scores
+  - name: Reviews
+  - name: Taxonomy
+  - name: Campaigns
+  - name: Exports
+  - name: Usage
+  - name: AI Providers
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness probe
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+  /ready:
+    get:
+      tags: [System]
+      summary: Readiness probe (dependencies checked)
+      security: []
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /sources:
+    get:
+      tags: [Sources]
+      summary: List sources
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceListResponse'
+    post:
+      tags: [Sources]
+      summary: Create source
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSourceRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        '409':
+          description: Duplicate source (Idempotency-Key replay conflict)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /discovery/search:
+    post:
+      tags: [Discovery]
+      summary: Create discovery job
+      description: Requires Idempotency-Key (repeat submissions return the original job).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscoveryRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '402':
+          description: Usage quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /discovery/jobs/{jobId}:
+    get:
+      tags: [Discovery]
+      summary: Get job status
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+    delete:
+      tags: [Discovery]
+      summary: Request cooperative job cancellation
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '202':
+          description: Cancellation requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '409':
+          description: Job already terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+
+  /leads:
+    get:
+      tags: [Leads]
+      summary: List leads (structured filters are authoritative)
+      parameters:
+        - in: query
+          name: businessType
+          schema: { type: string }
+          description: Business Type taxonomy slug or id
+        - in: query
+          name: industry
+          schema: { type: string }
+        - in: query
+          name: specialty
+          schema: { type: string }
+        - in: query
+          name: brand
+          schema: { type: string }
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: source
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/LeadStatus' }
+        - in: query
+          name: minRelevance
+          schema: { type: number, minimum: 0, maximum: 100 }
+        - in: query
+          name: minAudienceQuality
+          schema: { type: number, minimum: 0, maximum: 100 }
+        - in: query
+          name: minActivity
+          schema: { type: number, minimum: 0, maximum: 100 }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [relevance, priority, activity, audienceQuality, createdAt] }
+        - in: query
+          name: order
+          schema: { type: string, enum: [ASC, DESC], default: DESC }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadListResponse'
+  /leads/{leadId}:
+    get:
+      tags: [Leads]
+      summary: Get lead detail
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+  /leads/search/natural-language:
+    post:
+      tags: [Leads]
+      summary: Natural-language search (Persian first-class)
+      description: |
+        Parses user text (fa/en) into a typed StructuredSearchQuery and executes it.
+        The LLM never emits SQL or raw filter expressions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, example: "عمده‌فروشان قطعات پرینتر HP در تهران" }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadListResponse'
+        '400':
+          description: Ambiguous/unparseable query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+  /leads/{leadId}/reprocess:
+    post:
+      tags: [Analysis]
+      summary: Queue reprocessing (new version; old versions stay auditable)
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: { $ref: '#/components/schemas/AnalysisMode' }
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+  /leads/{leadId}/evidence:
+    get:
+      tags: [Evidence]
+      summary: List lead evidence (provenance required per item)
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+        - in: query
+          name: analysisId
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Evidence'
+  /leads/{leadId}/scores:
+    get:
+      tags: [Scores]
+      summary: Get current lead scores (policy-versioned)
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadScore'
+        '404':
+          description: No current score yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+  /leads/{leadId}/audience-quality:
+    get:
+      tags: [Scores]
+      summary: Get audience quality (risk-oriented, independent of relevance)
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudienceQuality'
+  /leads/{leadId}/reviews:
+    post:
+      tags: [Reviews]
+      summary: Submit human review
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          description: Reviewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+  /reviews/queue:
+    get:
+      tags: [Reviews]
+      summary: Review queue
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadListResponse'
+
+  /taxonomy:
+    get:
+      tags: [Taxonomy]
+      summary: Get taxonomy tree
+      parameters:
+        - in: query
+          name: locale
+          schema: { type: string, default: fa }
+        - in: query
+          name: nodeKind
+          schema: { $ref: '#/components/schemas/TaxonomyNodeKind' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxonomyNodeListResponse'
+    post:
+      tags: [Taxonomy]
+      summary: Create taxonomy node
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaxonomyNodeRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxonomyNode'
+        '409':
+          description: Duplicate slug in scope (root or sibling)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
+  /taxonomy/{nodeId}:
+    patch:
+      tags: [Taxonomy]
+      summary: Update/move/deactivate node
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaxonomyNodeRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxonomyNode'
+        '409':
+          description: Invalid hierarchy edge (parent kind mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
+  /taxonomy/{nodeId}/translations:
+    put:
+      tags: [Taxonomy]
+      summary: Upsert node translation
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locale, name]
+              properties:
+                locale: { type: string, example: fa }
+                name: { type: string, example: "رنگ و لایت" }
+                description: { type: string }
+      responses:
+        '200':
+          description: Upserted
+  /taxonomy/{nodeId}/aliases:
+    put:
+      tags: [Taxonomy]
+      summary: Upsert node alias (normalized automatically; Persian first-class)
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [alias]
+              properties:
+                alias: { type: string, example: "آرایشگاه زنانه" }
+                locale: { type: string, default: fa }
+      responses:
+        '200':
+          description: Upserted
+
+  /campaigns:
+    get:
+      tags: [Campaigns]
+      summary: List campaigns
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+    post:
+      tags: [Campaigns]
+      summary: Create campaign
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCampaignRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+  /campaigns/{campaignId}/leads:
+    post:
+      tags: [Campaigns]
+      summary: Add leads to campaign
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkLeadRequest'
+      responses:
+        '200':
+          description: Added
+    delete:
+      tags: [Campaigns]
+      summary: Remove leads from campaign
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkLeadRequest'
+      responses:
+        '200':
+          description: Removed
+
+  /exports:
+    post:
+      tags: [Exports]
+      summary: Queue export job (async; never synchronous)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExportRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Export'
+  /exports/{exportId}:
+    get:
+      tags: [Exports]
+      summary: Get export status/result
+      parameters:
+        - $ref: '#/components/parameters/ExportId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Export'
+
+  /usage:
+    get:
+      tags: [Usage]
+      summary: Usage counters for current period
+      parameters:
+        - in: query
+          name: period
+          schema: { type: string, example: '2026-10' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageResponse'
+
+  /ai/providers:
+    get:
+      tags: [AI Providers]
+      summary: List configured AI providers (incl. optional DecisionProvider)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AiProvider'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    LeadId:
+      name: leadId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CampaignId:
+      name: campaignId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExportId:
+      name: exportId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NodeId:
+      name: nodeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 255 }
+      description: |
+        Scope: tenant + endpoint + key. Same key + same request body → replay the
+        original response. Same key + different body → 409 CONFLICT. Records
+        expire after 24h; IN_FLIGHT replays return 409 with Retry-After.
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema: { type: string }
+  schemas:
+    # ---------------- system ----------------
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [UP, DOWN] }
+        checks:
+          type: object
+          additionalProperties: { type: boolean }
+    # ---------------- sources ----------------
+    CreateSourceRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type: { type: string, example: INSTAGRAM }
+        name: { type: string }
+        config: { type: object, additionalProperties: true }
+    Source:
+      type: object
+      required: [id, type, name, status]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [ACTIVE, PAUSED, DISABLED] }
+        capabilities:
+          type: array
+          items: { type: string, enum: [profile_search, profile_fetch, content_fetch, image_fetch, location, engagement_metrics] }
+        createdAt: { type: string, format: date-time }
+    SourceListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+    # ---------------- discovery ----------------
+    DiscoveryRequest:
+      type: object
+      required: [sourceId]
+      properties:
+        sourceId: { type: string, format: uuid }
+        query: { type: string, example: "آرایشگران شیراز" }
+        filters: { type: object, additionalProperties: { type: string } }
+        analysisMode: { $ref: '#/components/schemas/AnalysisMode' }
+        maxCandidates: { type: integer, minimum: 1, maximum: 10000 }
+    JobStatus:
+      type: string
+      enum: [PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLED, SKIPPED]
+    Job:
+      type: object
+      required: [id, type, status, progress]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [DISCOVERY, NORMALIZATION, DEDUP, ANALYSIS, SCORING, EXPORT, REPROCESS] }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        currentStep:
+          type: string
+          enum: [DISCOVERY, FETCH, NORMALIZATION, DEDUP, ANALYSIS, VISION, DECISION, EVIDENCE_VALIDATION, SCORING]
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        attemptCount: { type: integer }
+        maxAttempts: { type: integer }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        correlationId: { type: string, format: uuid, nullable: true }
+        runAfter: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    # ---------------- taxonomy ----------------
+    TaxonomyNodeKind:
+      type: string
+      enum: [BUSINESS_TYPE, INDUSTRY, SPECIALTY, SUB_SPECIALTY]
+    TaxonomyNode:
+      type: object
+      required: [id, nodeKind, slug, name]
+      properties:
+        id: { type: string, format: uuid }
+        parentId: { type: string, format: uuid, nullable: true }
+        nodeKind: { $ref: '#/components/schemas/TaxonomyNodeKind' }
+        slug: { type: string }
+        name: { type: string, description: "Name in requested locale" }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        translations:
+          type: array
+          items:
+            type: object
+            properties:
+              locale: { type: string }
+              name: { type: string }
+        aliases:
+          type: array
+          items: { type: string }
+    CreateTaxonomyNodeRequest:
+      type: object
+      required: [nodeKind, name, slug]
+      properties:
+        parentId: { type: string, format: uuid, nullable: true }
+        nodeKind: { $ref: '#/components/schemas/TaxonomyNodeKind' }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+    UpdateTaxonomyNodeRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        parentId: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+    TaxonomyNodeListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxonomyNode'
+    # ---------------- leads ----------------
+    LeadStatus:
+      type: string
+      enum: [DISCOVERED, RAW_STORED, NORMALIZED, DEDUP_CHECKED, ANALYSIS_PENDING, ANALYZING, SCORED, REVIEW_REQUIRED, QUALIFIED, REJECTED, FAILED, ARCHIVED]
+    AnalysisMode:
+      type: string
+      enum: [BASIC, STANDARD, DEEP]
+    Availability:
+      type: string
+      enum: [AVAILABLE, PARTIAL, INFERRED, UNAVAILABLE]
+    LocationValue:
+      type: object
+      required: [rawValue, availability]
+      properties:
+        country: { type: string, nullable: true }
+        province: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        district: { type: string, nullable: true }
+        rawValue: { type: string }
+        availability: { $ref: '#/components/schemas/Availability' }
+        confidence: { type: number, nullable: true }
+    ContactValue:
+      type: object
+      required: [kind, value, availability]
+      properties:
+        kind: { type: string, enum: [PHONE, MOBILE, WHATSAPP, EMAIL, WEBSITE, SOCIAL] }
+        value: { type: string }
+        availability: { $ref: '#/components/schemas/Availability' }
+        isSensitive: { type: boolean, default: false }
+    Business:
+      type: object
+      required: [id, canonicalName]
+      properties:
+        id: { type: string, format: uuid }
+        canonicalName: { type: string }
+        businessTypes:
+          type: array
+          items: { type: string, description: "Business Type node refs (first-class)" }
+        industries:
+          type: array
+          items: { type: string }
+        website: { type: string, nullable: true }
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationValue'
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactValue'
+    LeadIdentity:
+      type: object
+      required: [sourceType, externalId]
+      properties:
+        sourceType: { type: string }
+        externalId: { type: string }
+        username: { type: string, nullable: true }
+        profileUrl: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+    LeadClassification:
+      type: object
+      required: [classificationType, source]
+      properties:
+        classificationType: { type: string, enum: [BUSINESS_TYPE, INDUSTRY, SPECIALTY, SUB_SPECIALTY, BRAND, OTHER] }
+        taxonomyNodeId: { type: string, format: uuid, nullable: true }
+        valueText: { type: string, nullable: true }
+        confidence: { type: number, nullable: true }
+        source: { type: string, enum: [AI, RULE, HUMAN] }
+        modelVersion: { type: string, nullable: true }
+    LeadAnalysis:
+      type: object
+      required: [id, analysisVersion, isCurrent]
+      properties:
+        id: { type: string, format: uuid }
+        analysisVersion: { type: string }
+        modelVersion: { type: string, nullable: true }
+        promptVersion: { type: string, nullable: true }
+        schemaVersion: { type: string, nullable: true }
+        taxonomyVersion: { type: integer }
+        analysisMode: { type: string, enum: [BASIC, STANDARD, DEEP, BE_REUSE] }
+        summary: { type: string, nullable: true }
+        confidence: { type: number, nullable: true }
+        isCurrent: { type: boolean }
+        supersededAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Evidence:
+      type: object
+      required: [id, evidenceType, sourceType, sourceReference, contentHash, retrievedAt]
+      properties:
+        id: { type: string, format: uuid }
+        analysisId: { type: string, format: uuid, nullable: true }
+        evidenceType:
+          type: string
+          enum: [BIO_TEXT, CAPTION_TEXT, IMAGE_OBSERVATION, CONTENT_METADATA, LOCATION_SIGNAL, PROFILE_METADATA, ENGAGEMENT_SIGNAL, MODEL_INFERENCE, HUMAN_CORRECTION]
+        sourceType: { type: string }
+        sourceReference: { type: string }
+        content: { type: string, nullable: true }
+        contentHash: { type: string }
+        retrievedAt: { type: string, format: date-time }
+        confidence: { type: number, nullable: true }
+    LeadScore:
+      type: object
+      required: [relevance, audienceQuality, activity, confidence, priority, scoringPolicyVersion]
+      properties:
+        relevance: { type: number, minimum: 0, maximum: 100 }
+        audienceQuality: { type: number, minimum: 0, maximum: 100, description: "Independent of relevance" }
+        activity: { type: number, minimum: 0, maximum: 100 }
+        confidence: { type: number, minimum: 0, maximum: 100 }
+        priority: { type: number, minimum: 0, maximum: 100 }
+        scoringPolicyVersion: { type: string }
+        reviewOutcome: { type: string, enum: [QUALIFIED, REVIEW_REQUIRED, REJECTED] }
+    AudienceQuality:
+      type: object
+      required: [riskLevel]
+      properties:
+        qualityScore: { type: number, minimum: 0, maximum: 100, nullable: true }
+        riskLevel: { type: string, enum: [LOW, MEDIUM, HIGH, UNKNOWN] }
+        signals: { type: array, items: { type: object, additionalProperties: true } }
+        confidence: { type: number, nullable: true }
+        modelVersion: { type: string, nullable: true }
+    Decision:
+      type: object
+      required: [status, provider]
+      properties:
+        id: { type: string, format: uuid }
+        decisionType: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            required: [id, label]
+            properties:
+              id: { type: string }
+              label: { type: string }
+        probabilities:
+          type: array
+          items:
+            type: object
+            required: [optionId, probability]
+            properties:
+              optionId: { type: string }
+              probability: { type: number, minimum: 0, maximum: 1 }
+        selectedOptionId: { type: string, nullable: true }
+        appliedThreshold: { type: number, nullable: true }
+        status: { type: string, enum: [ACCEPTED, REVIEW_REQUIRED, REJECTED, ABSTAINED] }
+        provider: { type: string, description: "Provider name or RULES" }
+        modelVersion: { type: string, nullable: true }
+    Lead:
+      type: object
+      required: [id, status, business]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/LeadStatus' }
+        business: { $ref: '#/components/schemas/Business' }
+        identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadIdentity'
+        classifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadClassification'
+        currentAnalysis:
+          allOf:
+            - $ref: '#/components/schemas/LeadAnalysis'
+          nullable: true
+        currentScore:
+          allOf:
+            - $ref: '#/components/schemas/LeadScore'
+          nullable: true
+        audienceQuality:
+          allOf:
+            - $ref: '#/components/schemas/AudienceQuality'
+          nullable: true
+        decision:
+          allOf:
+            - $ref: '#/components/schemas/Decision'
+          nullable: true
+        firstSeenAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+    Pagination:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+    LeadListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lead'
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    # ---------------- reviews / campaigns / exports / usage / ai ----------------
+    ReviewRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [ACCEPT, REJECT, CORRECT, MARK_UNCERTAIN] }
+        correctedValue: { type: object, additionalProperties: true }
+        reason: { type: string }
+    Review:
+      type: object
+      required: [id, leadId, decision]
+      properties:
+        id: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        decision: { type: string, enum: [ACCEPT, REJECT, CORRECT, MARK_UNCERTAIN] }
+        originalValue: { type: object, additionalProperties: true, nullable: true }
+        correctedValue: { type: object, additionalProperties: true, nullable: true }
+        reason: { type: string, nullable: true }
+        modelVersion: { type: string, nullable: true }
+        taxonomyVersion: { type: integer, nullable: true }
+        scoringPolicyVersion: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Campaign:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [DRAFT, ACTIVE, COMPLETED, ARCHIVED] }
+        filters: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+    CreateCampaignRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        filters: { type: object, additionalProperties: true }
+    CampaignListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Campaign'
+    BulkLeadRequest:
+      type: object
+      required: [leadIds]
+      properties:
+        leadIds:
+          type: array
+          items: { type: string, format: uuid }
+          maxItems: 1000
+    CreateExportRequest:
+      type: object
+      required: [exportType]
+      properties:
+        exportType: { type: string, enum: [CSV, JSON, XLSX] }
+        campaignId: { type: string, format: uuid, nullable: true }
+        filters: { type: object, additionalProperties: true }
+    Export:
+      type: object
+      required: [id, exportType, status]
+      properties:
+        id: { type: string, format: uuid }
+        jobId: { type: string, format: uuid, nullable: true }
+        exportType: { type: string, enum: [CSV, JSON, XLSX] }
+        status: { type: string, enum: [PENDING, RUNNING, COMPLETED, FAILED] }
+        fileUrl: { type: string, nullable: true, description: "Signed URL when COMPLETED; expires" }
+        createdAt: { type: string, format: date-time }
+    UsageResponse:
+      type: object
+      required: [period, counters]
+      properties:
+        period: { type: string, example: '2026-10' }
+        counters:
+          type: object
+          additionalProperties: { type: number }
+    AiProvider:
+      type: object
+      required: [id, name, type, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string, enum: [LLM, VISION, DECISION, EMBEDDING, OTHER] }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+    # ---------------- errors ----------------
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, VALIDATION_FAILED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, RATE_LIMITED, PROVIDER_ERROR, JOB_STATE_INVALID, QUOTA_EXCEEDED, INTERNAL]
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+        requestId: { type: string, description: "Echo of X-Request-Id or generated" }
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [VALIDATION_FAILED] }
+                details:
+                  type: object
+                  properties:
+                    fields:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          field: { type: string }
+                          issue: { type: string }
+    AuthorizationError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [UNAUTHORIZED, FORBIDDEN] }
+    NotFoundError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [NOT_FOUND] }
+    ConflictError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [CONFLICT] }
+    RateLimitError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [RATE_LIMITED] }
+    ProviderError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [PROVIDER_ERROR] }
+    JobStateError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code: { type: string, enum: [JOB_STATE_INVALID] }

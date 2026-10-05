@@ -1,0 +1,11 @@
+{
+  "name": "@ulip/database-tests",
+  "private": true,
+  "description": "Constraint tests for the canonical ULIP schema (remediation §39). Runs against a real PostgreSQL; see tests/db-constraints.test.ts header for the Docker command.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/db-constraints.test.ts"
+  },
+  "devDependencies": {
+    "pg": "^8.13.0"
+  }
+}

@@ -1,0 +1,13 @@
+Universal Lead Intelligence Platform — Documentation Package
+
+1. docs/00-master-architecture-spec.md
+2. docs/01-prd.md
+3. docs/architecture/02-technical-architecture-and-adr.md
+4. docs/database/03-database-erd.md
+5. docs/api/04-api-contract.md
+6. prompts/05-master-prompt-claude-code.md
+7. docs/implementation/06-repository-file-tree.md
+8. docs/07-documentation-map.md
+9. README.md
+
+Note: These are the complete architecture/design artifacts created in the conversation to date. No application source implementation is being claimed by this package.

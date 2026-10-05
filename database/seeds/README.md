@@ -1,0 +1,19 @@
+-- ULIP seed strategy
+--
+-- Seeds are demo/illustrative data applied AFTER migrations in development and
+-- staging only. Production tenants start EMPTY; they create their own taxonomy.
+--
+-- Structure (applied in order):
+--   001_core_reference.sql       roles + a development tenant + global-style
+--                                taxonomy examples (BT/Industry/Specialty with
+--                                Persian translations + aliases)
+--   002_policies_example.sql     example scoring/decision policies showing the
+--                                persisted-threshold pattern
+--
+-- Notes:
+-- - IDs are deterministic (fixed UUIDs) so down-seeds and tests are stable.
+-- - The taxonomy seed demonstrates the BusinessType → Industry → Specialty
+--   hierarchy; it is NOT business logic — taxonomy is always database-driven.
+-- - Persian aliases are seeded with pre-normalized `alias_norm` values
+--   (Arabic→Persian letter unification + ZWNJ handling applied), matching the
+--   @ulip/persian-normalize package output.
