@@ -41,3 +41,13 @@
 - tenant plans/quotas
 - advanced graph analytics
 - optional outreach module as a separate bounded component
+
+## Social Actions & Outreach (shipped architecture, ADR-026)
+
+- Social Actions module: capability-gated open/follow/unfollow/message,
+  idempotent, auditable, manual fallback for unsupported platforms.
+- Outreach module: templates, campaigns (universal business-model filters),
+  eligibility, explicit confirmation gate, bulk = one separate message per
+  lead, progress + reporting.
+- Instagram status: OPEN_PROFILE supported; FOLLOW/UNFOLLOW/SEND_MESSAGE
+  NOT_SUPPORTED (manual fallback) until an authorized API path exists.

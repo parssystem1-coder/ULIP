@@ -288,10 +288,12 @@ For every phase:
 
 # 6. CANONICAL IMPLEMENTATION ROADMAP — 13 PHASES (00–12)
 
-The canonical roadmap is **13 phases (00–12)**. The authoritative per-phase
-specifications are the files in `prompts/phases/` (PHASE-00 … PHASE-12), kept in
-lockstep with `docs/implementation/IMPLEMENTATION-PLAN.md`. Do not invent, split,
-renumber, or add phases. Every phase prompt defines: objective, scope, dependencies,
+The canonical roadmap was **13 phases (00–12)** and is extended by
+**PHASE-13 — Social Actions & Outreach** (ADR-026), which adds the
+provider-agnostic social actions and campaign outreach modules as bounded
+contexts. The authoritative per-phase
+specifications are the files in `prompts/phases/` (PHASE-00 … PHASE-13), kept in
+lockstep with `docs/implementation/IMPLEMENTATION-PLAN.md`. Every phase prompt defines: objective, scope, dependencies,
 files affected, database changes, API changes, implementation tasks, tests,
 documentation, and definition of done.
 

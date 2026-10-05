@@ -406,7 +406,114 @@ Integration Tests
 
 بر اساس همان Contract کار کنند.
 
-# 22. مرجعیت قرارداد و Idempotency
+# 22. Social Actions (ADR-026)
+
+مرجع نهایی: `docs/api/OPENAPI.yaml` (تگ‌های `Social Actions`).
+
+### گزارش قابلیت‌ها (honest)
+
+```http
+GET /api/v1/social/capabilities/{sourceType}
+```
+
+```json
+{
+  "sourceType": "instagram",
+  "capabilities": {
+    "OPEN_PROFILE": "SUPPORTED",
+    "FOLLOW_PROFILE": "NOT_SUPPORTED",
+    "UNFOLLOW_PROFILE": "NOT_SUPPORTED",
+    "SEND_MESSAGE": "NOT_SUPPORTED"
+  }
+}
+```
+
+فقط اکشن‌های `SUPPORTED` در UI به‌صورت قابل‌اجرا نمایش داده می‌شوند.
+
+### اجرای یک اکشن (idempotent)
+
+```http
+POST /api/v1/social/actions
+Idempotency-Key: <key>
+```
+
+```json
+{
+  "leadId": "lead_123",
+  "sourceType": "instagram",
+  "type": "SEND_MESSAGE",
+  "message": "...",
+  "requireApproval": false
+}
+```
+
+پاسخ `kind` یکی از: `EXECUTED`, `NOT_SUPPORTED` (با `fallback`),
+`IDEMPOTENT_REPLAY`, `BLOCKED_SUPPRESSED`, `BLOCKED_RECENT_CONTACT`,
+`AWAITING_APPROVAL`, `COMPLETED_MANUALLY`.
+
+اکشن پشتیبانی‌نشده هرگز اجرا نمی‌شود؛ خروجی شامل **برنامهٔ fallback دستی** است:
+`Open Profile → Copy Prepared Message → انجام دستی → تیک‌زدن «انجام شد»`.
+
+### سایر endpointها
+
+- `GET /social/actions` — تاریخچهٔ اکشن‌ها (فیلتر بر اساس leadId/status)
+- `GET /social/actions/{id}` / `DELETE /social/actions/{id}` (لغو)
+- `POST /social/actions/{id}/approve` / `retry` / `fallback` / `complete-manual`
+- `GET /social/actions/{id}/attempts` — audit کامل تلاش‌ها (شامل retry-after)
+
+# 23. Outreach (ADR-026)
+
+مرجع نهایی: `docs/api/OPENAPI.yaml` (تگ `Outreach`).
+
+**پیام انبوه = یک پیام جداگانه برای هر lead انتخاب‌شده؛ هرگز group chat نیست.**
+
+### قالب پیام
+
+```http
+GET/POST /api/v1/outreach/templates
+POST /api/v1/outreach/templates/{templateId}/preview
+```
+
+بدنه با placeholder: `سلام {{business_name}}، ...`
+
+### کمپین (فیلترها همان مدل جهانی کسب‌وکار)
+
+```http
+POST /api/v1/outreach/campaigns
+```
+
+```json
+{
+  "name": "Wholesaler → Printing → Printer Parts → Tehran",
+  "templateId": "tpl_1",
+  "filters": {
+    "businessTypes": ["wholesaler"],
+    "industries": ["printing"],
+    "specialties": ["printer-parts"],
+    "city": "تهران"
+  }
+}
+```
+
+### جریان اجرا (gate تأیید انسانی)
+
+```text
+PUT  /outreach/campaigns/{id}/recipients   انتخاب + بررسی واجد شرایطی + پیش‌نمایش هر lead
+POST /outreach/campaigns/{id}/submit       DRAFT → PENDING_APPROVAL
+POST /outreach/campaigns/{id}/confirm      تأیید صریح انسانی با تطابق اعداد (وگرنه 409)
+POST /outreach/campaigns/{id}/execute      اجرای bulk (یک پیام جداگانه برای هر lead)
+POST /outreach/campaigns/{id}/pause|cancel توقف/لغو تعاونی
+GET  /outreach/campaigns/{id}/report       پیشرفت + گزارش ارسال
+```
+
+اجرای مجدد idempotent است: گیرندگان `SENT` دوباره پیام نمی‌گیرند.
+
+### تاریخچه و suppression
+
+- `GET /outreach/history` — تاریخچه تماس lead
+- `GET/POST /outreach/suppression` — لیست/افزودن ممنوع‌التماس (همیشه برنده)
+
+# 24. مرجعیت قرارداد و Idempotency
 
 ## مرجعیت OpenAPI (ADR-020)
 

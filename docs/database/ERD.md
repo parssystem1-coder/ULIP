@@ -37,6 +37,17 @@ Tenant 1 ───── * DecisionPolicy → DecisionPolicyVersion
 Lead 1 ─────── * EntityResolutionCandidate (candidate A/B, signals, similarity)
 EntityResolutionMatch * ── * Business / Lead (merge decisions via EntityMergeEvent)
 Tenant 1 ───── * AuditLog
+-- Social Actions + Outreach (migration 0002, ADR-026)
+Tenant 1 ───── * MessageTemplate
+Tenant 1 ───── * OutreachCampaign        (filters keep the universal business model)
+MessageTemplate 1 ── * OutreachCampaign
+Tenant 1 ───── * SocialAction
+Lead 1 ─────── * SocialAction            (UNIQUE (tenant_id, idempotency_key))
+SocialAction 1 ── * SocialActionAttempt (retry-after persisted, respected)
+OutreachCampaign 1 ── * OutreachRecipient (one row per (campaign, lead) = one separate message)
+OutreachRecipient * ── 1 SocialAction
+Lead 1 ─────── * LeadContactHistory      (cool-down guard + reporting)
+Tenant 1 ───── * SuppressionEntry        (always wins; scoped LEAD/BUSINESS/EMAIL/PHONE/DOMAIN)
 ```
 
 Current-version semantics (ADR-024): `lead_analyses` and `lead_scores` keep

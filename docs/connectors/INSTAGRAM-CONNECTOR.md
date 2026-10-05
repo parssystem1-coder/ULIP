@@ -15,6 +15,28 @@ Depending on the approved integration method, the connector may support some sub
 
 Capability availability must be discovered at runtime/configuration time rather than assumed.
 
+## Social action capabilities (ADR-026)
+
+Action capabilities are advertised ONLY when the authorized integration
+genuinely performs them. For the currently authorized Instagram boundary:
+
+| Action | Status | Notes |
+| --- | --- | --- |
+| `OPEN_PROFILE` | **SUPPORTED** | Opening a profile is a navigation to the lead's public profile URL — no mutation, no bypass. |
+| `FOLLOW_PROFILE` | **NOT_SUPPORTED** | No authorized follow API in the current integration → `NOT_SUPPORTED` + manual fallback. |
+| `UNFOLLOW_PROFILE` | **NOT_SUPPORTED** | Same boundary as follow. |
+| `SEND_MESSAGE` | **NOT_SUPPORTED** | No authorized DM API in the current integration → `NOT_SUPPORTED` + manual fallback. |
+| `BULK_SEND_MESSAGE` | **NOT_SUPPORTED** | Orchestration of an unsupported capability. |
+
+If the authorized integration later gains a genuine, documented follow/DM API
+(official Graph-API paths under an approved permission set), the connector may
+start advertising the capability and implement it through that API only. Until
+then the manual fallback applies:
+
+```text
+Open Profile → Copy Prepared Message → user performs the action manually → mark completed
+```
+
 ## Normalized mapping
 
 Potential mappings:

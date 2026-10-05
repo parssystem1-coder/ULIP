@@ -4,7 +4,10 @@
 No automatic outreach in Core
 
 ## Status
-Accepted for the current architecture baseline.
+Accepted for the current architecture baseline. The implementation freeze was
+superseded by **ADR-026** (Social Actions and Outreach as bounded modules with
+a human confirmation gate); the *safety boundary* of this ADR (no bypass
+mechanics, honest capabilities) remains binding inside ADR-026.
 
 ## Decision
 Campaign grouping/export stops short of message automation.

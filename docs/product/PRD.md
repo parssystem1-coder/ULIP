@@ -519,3 +519,22 @@ MVP زمانی Done است که:
 تبدیل شود.
 
 Architecture باید از روز اول برای این آینده آماده باشد.
+
+# 27. Social Actions & Outreach (ADR-026)
+
+فاز محصولی Social Actions + Outreach به‌صورت ماژول مستقل (جدا از Discovery و
+AI Analysis) اضافه شده است:
+
+- **اکشن‌های اجتماعی**: Open Profile، Follow، Unfollow، Message — با گزارش
+  قابلیت صادقانه؛ فقط اکشن‌های واقعاً پشتیبانی‌شده در UI قابل‌اجرا هستند و
+  بقیه با fallback دستی (Open Profile → Copy Prepared Message → انجام دستی).
+- **Outreach کمپینی**: قالب پیام، انتخاب leadها بر اساس مدل جهانی
+  (Business Type → Industry → Specialty → Sub-specialty + Location)،
+  پیش‌نمایش، بررسی واجد شرایطی، **تأیید صریح انسانی**، اجرای bulk به‌صورت
+  **یک پیام جداگانه برای هر lead (هرگز group chat نیست)**، پیشرفت و گزارش.
+- **ایمنی**: suppression همیشه برنده است؛ فاصلهٔ تماس (cool-down) جلوی پیام
+  تکراری را می‌گیرد؛ retry-after پرووایدر محترم شمرده می‌شود؛ همهٔ اکشن‌ها
+  tenant-scoped، permission-controlled، auditable، idempotent و retry-safe.
+
+جزئیات: `docs/adr/ADR-026-social-actions-and-outreach.md`،
+`docs/api/API.md` (§22–23)، `database/migrations/0002_social_actions_outreach`.

@@ -22,7 +22,8 @@ export type JobType =
   | 'ANALYSIS'
   | 'SCORING'
   | 'EXPORT'
-  | 'REPROCESS';
+  | 'REPROCESS'
+  | 'OUTREACH';
 
 export type PipelineStep =
   | 'DISCOVERY'

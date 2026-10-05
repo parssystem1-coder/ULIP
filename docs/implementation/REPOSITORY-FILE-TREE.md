@@ -35,12 +35,14 @@ ULIP/
 │   ├── pnpm-lock.yaml                          [E]
 │   ├── apps/api/src/modules/README.md          [E] placeholder for the API app (Phase 01)
 │   ├── infra/docker/docker-compose.yml         [E] Postgres+Redis for local dev/tests
-│   └── packages/
-│       ├── domain/                             [E] contracts.ts, persian-normalize.ts + tests
-│       ├── connectors/                         [E] typed connector contracts + capability tests
+│   └── packages/│       ├── domain/                             [E] contracts.ts, persian-normalize.ts + tests
+│       ├── connectors/                         [E] typed connector contracts + capability tests (incl. ActionCapability)
 │       ├── ai/                                 [E] typed AI/Jev contracts + validation tests
 │       ├── scoring/                            [E] policy resolver + tests
-│       └── orchestration/                      [E] state machine transitions + tests
+│       ├── orchestration/                      [E] state machine transitions + tests
+│       ├── social-actions/                     [E] ADR-026: action contracts/service/fakes + 17 tests
+│       ├── outreach/                           [E] ADR-026: campaigns/templates/eligibility + 11 tests
+│       └── api-contract/                       [E] OpenAPI validator (ADR-020) + house-rule tests
 │
 ├── docs/
 │   ├── 00-master-architecture-spec.md          [E] master spec (Business Type model)
@@ -72,8 +74,8 @@ ULIP/
 │   └── archive/conversation-v1/                [E] frozen historical snapshot (not synced)
 │
 └── prompts/
-    ├── master/MASTER-PROMPT.md                 [E] references the canonical 13 phases
-    └── phases/PHASE-00 … PHASE-12              [E] exactly 13 phase prompts (canonical)
+    ├── master/MASTER-PROMPT.md                 [E] references the canonical phases (incl. PHASE-13)
+    └── phases/PHASE-00 … PHASE-13              [E] 14 phase prompts (13 canonical + Social Actions & Outreach)
 ```
 
 ## Files to be created later (canonical, not existing)

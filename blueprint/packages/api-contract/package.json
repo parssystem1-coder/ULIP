@@ -1,0 +1,20 @@
+{
+  "name": "@ulip/api-contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/validate.ts",
+  "scripts": {
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "validate:openapi": "node --experimental-strip-types src/validate.ts"
+  },
+  "dependencies": {
+    "@apidevtools/swagger-parser": "^10.1.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

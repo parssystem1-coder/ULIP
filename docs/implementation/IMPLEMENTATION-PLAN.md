@@ -48,6 +48,15 @@ Human review, feedback dataset, campaign workflows and exports.
 
 Telemetry, E2E, security checks and operational readiness.
 
+## Phase 13 — Social Actions & Outreach (ADR-026)
+
+Provider-agnostic social actions (open/follow/unfollow/message) with honest
+capability negotiation and manual fallback, plus campaign-based outreach with
+message templates, per-lead eligibility, explicit human confirmation and bulk
+execution as one separate message per lead. Persistent model in migration
+`0002_social_actions_outreach`; API in OPENAPI.yaml (Social Actions / Outreach
+tags). See `prompts/phases/PHASE-13-SOCIAL-ACTIONS-OUTREACH.md`.
+
 ## Phase 12 — Hardening/documentation
 
 Performance review, documentation synchronization, migration notes, runbooks and release checklist.

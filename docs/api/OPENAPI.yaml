@@ -34,6 +34,8 @@ tags:
   - name: Exports
   - name: Usage
   - name: AI Providers
+  - name: Social Actions
+  - name: Outreach
 
 paths:
   /health:
@@ -607,6 +609,390 @@ paths:
               schema:
                 $ref: '#/components/schemas/UsageResponse'
 
+  # ----------------- Outreach (ADR-026) -----------------
+  /outreach/templates:
+    get:
+      tags: [Outreach]
+      summary: List message templates
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MessageTemplate'
+    post:
+      tags: [Outreach]
+      summary: Create a message template ({{placeholders}} are validated)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageTemplate'
+        '409':
+          description: Duplicate template name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
+  /outreach/templates/{templateId}/preview:
+    post:
+      tags: [Outreach]
+      summary: Render a template preview (no state change)
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variables]
+              properties:
+                variables:
+                  type: object
+                  additionalProperties: { type: string }
+                  example: { business_name: "چاپخانه تهران", city: "تهران" }
+      responses:
+        '200':
+          description: Rendered preview
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rendered]
+                properties:
+                  rendered: { type: string }
+        '400':
+          description: Missing variables for placeholders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+  /outreach/campaigns:
+    get:
+      tags: [Outreach]
+      summary: List outreach campaigns
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OutreachCampaign'
+    post:
+      tags: [Outreach]
+      summary: Create an outreach campaign (DRAFT)
+      description: |
+        Filters preserve the universal business model: Business Type → Industry
+        → Specialty → Sub-specialty + Location (e.g. Wholesaler → Printing →
+        Printer Parts → Tehran).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOutreachCampaignRequest'
+      responses:
+        '201':
+          description: Created as DRAFT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachCampaign'
+  /outreach/campaigns/{campaignId}:
+    get:
+      tags: [Outreach]
+      summary: Get outreach campaign
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachCampaign'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+  /outreach/campaigns/{campaignId}/recipients:
+    put:
+      tags: [Outreach]
+      summary: Select recipients + eligibility check + per-lead previews
+      description: |
+        Bulk messaging is ONE separate message per selected lead (never a group
+        chat). Every recipient gets its own rendered message. Retry-safe:
+        already SENT recipients are left untouched.
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [leads]
+              properties:
+                leads:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required: [leadId]
+                    properties:
+                      leadId: { type: string, format: uuid }
+                      variables:
+                        type: object
+                        additionalProperties: { type: string }
+      responses:
+        '200':
+          description: Selection summary with previews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectionSummary'
+  /outreach/campaigns/{campaignId}/submit:
+    post:
+      tags: [Outreach]
+      summary: Submit campaign for approval (DRAFT → PENDING_APPROVAL)
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachCampaign'
+        '409':
+          description: No eligible recipients or invalid state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /outreach/campaigns/{campaignId}/confirm:
+    post:
+      tags: [Outreach]
+      summary: Explicit human confirmation of the previewed plan (PENDING_APPROVAL → APPROVED)
+      description: |
+        Default bulk execution REQUIRES this explicit confirmation. Numbers the
+        operator confirms must match the stored plan exactly, otherwise 409.
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected]
+              properties:
+                expected:
+                  type: object
+                  required: [recipients, eligible]
+                  properties:
+                    recipients: { type: integer, minimum: 1 }
+                    eligible: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachCampaign'
+        '409':
+          description: Confirmation mismatch with the stored plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /outreach/campaigns/{campaignId}/execute:
+    post:
+      tags: [Outreach]
+      summary: Execute the confirmed campaign (bulk = one separate message per lead)
+      description: |
+        Runs as a persistent OUTREACH job. Idempotent: re-running never re-sends
+        to SENT recipients. Cooperatively cancellable. Pause/resume supported.
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '202':
+          description: Execution accepted (job-based)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '409':
+          description: Campaign not APPROVED (or confirmation drift)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /outreach/campaigns/{campaignId}/pause:
+    post:
+      tags: [Outreach]
+      summary: Pause a running campaign (EXECUTING → PAUSED)
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+      responses:
+        '200':
+          description: Paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachCampaign'
+        '409':
+          description: Not EXECUTING
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /outreach/campaigns/{campaignId}/cancel:
+    post:
+      tags: [Outreach]
+      summary: Cancel the campaign and pending recipients
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachCampaign'
+        '409':
+          description: Terminal state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /outreach/campaigns/{campaignId}/report:
+    get:
+      tags: [Outreach]
+      summary: Campaign progress + delivery report
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignReport'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+  /outreach/history:
+    get:
+      tags: [Outreach]
+      summary: Outreach/action history (lead contact history, tenant-scoped)
+      parameters:
+        - in: query
+          name: leadId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: campaignId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContactHistoryEntry'
+  /outreach/suppression:
+    get:
+      tags: [Outreach]
+      summary: List suppression entries
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SuppressionEntry'
+    post:
+      tags: [Outreach]
+      summary: Add a suppression entry (suppression always wins)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSuppressionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuppressionEntry'
+        '409':
+          description: Duplicate suppression entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
+
   /ai/providers:
     get:
       tags: [AI Providers]
@@ -624,6 +1010,218 @@ paths:
                     items:
                       $ref: '#/components/schemas/AiProvider'
 
+  # ----------------- Social Actions (ADR-026) -----------------
+  /social/capabilities/{sourceType}:
+    get:
+      tags: [Social Actions]
+      summary: Honest per-source action capability report
+      description: |
+        Only `SUPPORTED` actions may be rendered as executable in the UI.
+        Support is discovered from the authorized provider integration, never
+        assumed (ADR-026). Unsupported actions use the manual fallback flow.
+      parameters:
+        - $ref: '#/components/parameters/SourceTypeId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionCapabilityReport'
+        '404':
+          description: Unknown source type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+  /social/actions:
+    post:
+      tags: [Social Actions]
+      summary: Execute or enqueue a single social action
+      description: |
+        Idempotent per (tenant, Idempotency-Key). Unsupported capabilities are
+        refused honestly with status NOT_SUPPORTED plus a manual fallback plan;
+        no provider call is made and success is never faked.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteActionRequest'
+      responses:
+        '201':
+          description: Executed / refused / blocked (see result.kind)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteActionResult'
+        '409':
+          description: Idempotency-Key replay conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
+    get:
+      tags: [Social Actions]
+      summary: List social actions (tenant-scoped history)
+      parameters:
+        - in: query
+          name: leadId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/SocialActionStatus' }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialActionListResponse'
+  /social/actions/{actionId}:
+    get:
+      tags: [Social Actions]
+      summary: Get a social action
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialAction'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+    delete:
+      tags: [Social Actions]
+      summary: Cancel a PENDING/AWAITING_APPROVAL/APPROVED action
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialAction'
+        '409':
+          description: Action state does not allow cancellation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /social/actions/{actionId}/approve:
+    post:
+      tags: [Social Actions]
+      summary: Approve an action awaiting approval
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialAction'
+        '409':
+          description: Action not in AWAITING_APPROVAL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /social/actions/{actionId}/retry:
+    post:
+      tags: [Social Actions]
+      summary: Retry a FAILED action (respects provider retry-after)
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: Retry outcome
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteActionResult'
+        '409':
+          description: Action not in FAILED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /social/actions/{actionId}/attempts:
+    get:
+      tags: [Social Actions]
+      summary: Action audit trail (attempts incl. provider retry-after)
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SocialActionAttempt'
+  /social/actions/{actionId}/fallback:
+    post:
+      tags: [Social Actions]
+      summary: Enter the manual fallback flow (Open Profile → Copy Prepared Message → perform manually)
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+      responses:
+        '200':
+          description: Manual fallback plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualFallbackPlan'
+        '409':
+          description: Only NOT_SUPPORTED actions enter fallback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+  /social/actions/{actionId}/complete-manual:
+    post:
+      tags: [Social Actions]
+      summary: Mark a manual fallback action as completed by the user
+      parameters:
+        - $ref: '#/components/parameters/ActionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Completed manually
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialAction'
+        '409':
+          description: Action not in MANUAL_FALLBACK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStateError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -640,6 +1238,21 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    ActionId:
+      name: actionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SourceTypeId:
+      name: sourceType
+      in: path
+      required: true
+      schema: { type: string, example: instagram }
     ExportId:
       name: exportId
       in: path
@@ -725,7 +1338,7 @@ components:
       required: [id, type, status, progress]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [DISCOVERY, NORMALIZATION, DEDUP, ANALYSIS, SCORING, EXPORT, REPROCESS] }
+        type: { type: string, enum: [DISCOVERY, NORMALIZATION, DEDUP, ANALYSIS, SCORING, EXPORT, REPROCESS, OUTREACH] }
         status: { $ref: '#/components/schemas/JobStatus' }
         currentStep:
           type: string
@@ -1072,6 +1685,271 @@ components:
         name: { type: string }
         type: { type: string, enum: [LLM, VISION, DECISION, EMBEDDING, OTHER] }
         status: { type: string, enum: [ACTIVE, DISABLED] }
+    # ---------------- social actions (ADR-026) ----------------
+    ActionCapability:
+      type: string
+      enum: [OPEN_PROFILE, FOLLOW_PROFILE, UNFOLLOW_PROFILE, SEND_MESSAGE, BULK_SEND_MESSAGE]
+    SocialActionType:
+      type: string
+      enum: [OPEN_PROFILE, FOLLOW_PROFILE, UNFOLLOW_PROFILE, SEND_MESSAGE]
+    SocialActionStatus:
+      type: string
+      enum: [PENDING, AWAITING_APPROVAL, APPROVED, EXECUTING, SUCCEEDED, FAILED, CANCELLED, NOT_SUPPORTED, MANUAL_FALLBACK]
+    ActionCapabilityReport:
+      type: object
+      required: [sourceType, capabilities]
+      properties:
+        sourceType: { type: string, example: instagram }
+        capabilities:
+          type: object
+          description: "Only SUPPORTED actions may render as executable in the UI"
+          additionalProperties:
+            type: string
+            enum: [SUPPORTED, NOT_SUPPORTED]
+    ExecuteActionRequest:
+      type: object
+      required: [leadId, sourceType, type]
+      properties:
+        leadId: { type: string, format: uuid }
+        sourceType: { type: string, example: instagram }
+        type: { $ref: '#/components/schemas/SocialActionType' }
+        message:
+          type: string
+          description: "Required for SEND_MESSAGE; rendered from a template"
+        templateId: { type: string, format: uuid }
+        requireApproval: { type: boolean, default: false }
+    SocialAction:
+      type: object
+      required: [id, leadId, sourceType, type, status, idempotencyKey]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        sourceType: { type: string }
+        type: { $ref: '#/components/schemas/SocialActionType' }
+        status: { $ref: '#/components/schemas/SocialActionStatus' }
+        idempotencyKey: { type: string }
+        profileUrl: { type: string, nullable: true }
+        renderedMessage:
+          type: string
+          nullable: true
+          description: "Sensitive; exposure follows the retention policy"
+        campaignId: { type: string, format: uuid, nullable: true }
+        templateId: { type: string, format: uuid, nullable: true }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        executedAt: { type: string, format: date-time, nullable: true }
+        manualCompletedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SocialActionListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SocialAction'
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    SocialActionAttempt:
+      type: object
+      required: [id, actionId, attemptNo, outcome, startedAt]
+      properties:
+        id: { type: string, format: uuid }
+        actionId: { type: string, format: uuid }
+        attemptNo: { type: integer, minimum: 1 }
+        outcome: { type: string, enum: [SUCCESS, RETRYABLE_FAILURE, FATAL_FAILURE, NOT_SUPPORTED] }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        retryAfterAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Provider retry-after hint; respected, never evaded"
+        providerRef: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+    ManualFallbackPlan:
+      type: object
+      required: [actionType, sourceType, instructions, reason]
+      properties:
+        actionType: { $ref: '#/components/schemas/SocialActionType' }
+        sourceType: { type: string }
+        targetProfileUrl: { type: string, nullable: true }
+        preparedMessage:
+          type: string
+          nullable: true
+          description: "Copy-ready message for manual sending"
+        instructions:
+          type: array
+          items: { type: string }
+        reason:
+          type: string
+          enum: [ACTION_CAPABILITY_NOT_SUPPORTED]
+    ExecuteActionResult:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [EXECUTED, NOT_SUPPORTED, IDEMPOTENT_REPLAY, BLOCKED_SUPPRESSED, BLOCKED_RECENT_CONTACT, AWAITING_APPROVAL, COMPLETED_MANUALLY]
+        action: { $ref: '#/components/schemas/SocialAction' }
+        fallback: { $ref: '#/components/schemas/ManualFallbackPlan' }
+        reason: { type: string, nullable: true }
+        lastContactAt: { type: string, format: date-time, nullable: true }
+    # ---------------- outreach (ADR-026) ----------------
+    MessageTemplate:
+      type: object
+      required: [id, name, body, variables, status]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        name: { type: string }
+        body:
+          type: string
+          description: "Supports {{variable}} placeholders"
+        variables:
+          type: array
+          items: { type: string }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+    CreateTemplateRequest:
+      type: object
+      required: [name, body]
+      properties:
+        name: { type: string }
+        body:
+          type: string
+          example: "سلام {{business_name}}، محصولات شما در {{city}} عالی است."
+    OutreachCampaign:
+      type: object
+      required: [id, name, templateId, status]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        templateId: { type: string, format: uuid }
+        filters: { $ref: '#/components/schemas/OutreachFilters' }
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, EXECUTING, PAUSED, COMPLETED, CANCELLED]
+        jobId: { type: string, format: uuid, nullable: true }
+        approvedBy: { type: string, format: uuid, nullable: true }
+        approvedAt: { type: string, format: date-time, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    OutreachFilters:
+      type: object
+      description: "Universal business model filters (ADR-018)"
+      properties:
+        businessTypes:
+          type: array
+          items: { type: string }
+          example: [wholesaler]
+        industries:
+          type: array
+          items: { type: string }
+          example: [printing]
+        specialties:
+          type: array
+          items: { type: string }
+          example: [printer-parts]
+        subSpecialties:
+          type: array
+          items: { type: string }
+        city: { type: string, example: "تهران" }
+        country: { type: string }
+        sourceType: { type: string }
+    CreateOutreachCampaignRequest:
+      type: object
+      required: [name, templateId, filters]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        templateId: { type: string, format: uuid }
+        filters: { $ref: '#/components/schemas/OutreachFilters' }
+    SelectionSummary:
+      type: object
+      required: [total, eligible, ineligible, previews]
+      properties:
+        total: { type: integer, minimum: 0 }
+        eligible: { type: integer, minimum: 0 }
+        ineligible: { type: integer, minimum: 0 }
+        byReason:
+          type: object
+          additionalProperties: { type: integer }
+        previews:
+          type: array
+          items:
+            type: object
+            required: [leadId, eligible]
+            properties:
+              leadId: { type: string, format: uuid }
+              eligible: { type: boolean }
+              reason: { type: string, nullable: true }
+              message:
+                type: string
+                nullable: true
+                description: "This lead's own rendered message (never shared)"
+    CampaignReport:
+      type: object
+      required: [campaignId, status, totals, progress]
+      properties:
+        campaignId: { type: string, format: uuid }
+        status: { type: string, enum: [DRAFT, PENDING_APPROVAL, APPROVED, EXECUTING, PAUSED, COMPLETED, CANCELLED] }
+        totals:
+          type: object
+          required: [recipients, eligible, sent, failed, skipped, cancelled, pending]
+          properties:
+            recipients: { type: integer, minimum: 0 }
+            eligible: { type: integer, minimum: 0 }
+            sent: { type: integer, minimum: 0 }
+            failed: { type: integer, minimum: 0 }
+            skipped: { type: integer, minimum: 0 }
+            cancelled: { type: integer, minimum: 0 }
+            pending: { type: integer, minimum: 0 }
+        skipReasons:
+          type: object
+          additionalProperties: { type: integer }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+    ContactHistoryEntry:
+      type: object
+      required: [id, leadId, channel, direction, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        campaignId: { type: string, format: uuid, nullable: true }
+        socialActionId: { type: string, format: uuid, nullable: true }
+        channel: { type: string, enum: [DIRECT_MESSAGE, PROFILE_VISIT, FOLLOW, UNFOLLOW, OTHER] }
+        direction: { type: string, enum: [OUTBOUND, MANUAL] }
+        occurredAt: { type: string, format: date-time }
+        summary: { type: string }
+    SuppressionEntry:
+      type: object
+      required: [id, scope, reason]
+      properties:
+        id: { type: string, format: uuid }
+        scope: { type: string, enum: [LEAD, BUSINESS, EMAIL, PHONE, DOMAIN] }
+        leadId: { type: string, format: uuid, nullable: true }
+        businessId: { type: string, format: uuid, nullable: true }
+        valueText: { type: string, nullable: true }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+    CreateSuppressionRequest:
+      type: object
+      required: [scope, reason]
+      properties:
+        scope: { type: string, enum: [LEAD, BUSINESS, EMAIL, PHONE, DOMAIN] }
+        leadId: { type: string, format: uuid }
+        businessId: { type: string, format: uuid }
+        valueText: { type: string }
+        reason: { type: string }
+        notes: { type: string }
     # ---------------- errors ----------------
     ApiError:
       type: object

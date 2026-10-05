@@ -111,3 +111,35 @@ Do not use blank states without an explanation. Show whether the issue is:
 - analysis pending
 - permission denied
 - temporary provider error
+
+## 9. Capability-aware Lead/Campaign actions (ADR-026)
+
+Lead و Campaign UI فقط اکشن‌های زیر را بر اساس گزارش قابلیت
+(`GET /social/capabilities/{sourceType}`) رندر می‌کنند:
+
+```text
+Open | Follow | Unfollow | Message | Bulk Message
+```
+
+قواعد:
+
+- اکشن‌های `SUPPORTED` به‌صورت دکمهٔ قابل‌اجرا نمایش داده می‌شوند.
+- اکشن‌های `NOT_SUPPORTED` **هرگز** به‌شکل قابل‌اجرا ظاهر نمی‌شوند؛ به‌جای آن
+  یک «برنامهٔ اقدام دستی» ارائه می‌شود:
+  `Open Profile → Copy Prepared Message → انجام دستی → تیک «انجام شد»`.
+- برای `Message` روی یک lead، پیش‌نمایش پیام (رندر قالب) قبل از ارسال دیده
+  می‌شود و ارسال مستلزم تأیید است.
+- جریان Bulk Message دقیقاً این مسیر است:
+
+```text
+Select Leads → Choose Template → Preview → Eligibility Check →
+Confirm → Execute → Progress → Report
+```
+
+- در گام Confirm، اعداد نمایش‌داده‌شده (تعداد گیرندگان/واجد شرایطی) باید با
+  plan ذخیره‌شده مطابقت داشته باشد؛ مغایرت یعنی 409 و تازه‌سازی پیش‌نمایش.
+- گیرندگان غیرواجد شرایط با دلیل (SUPPRESSED، RECENT_CONTACT،
+  ACTION_NOT_SUPPORTED، LEAD_NOT_READY، MISSING_IDENTITY، TEMPLATE_ERROR)
+  شفاف نمایش داده می‌شوند.
+- نوار پیشرفت و گزارش ارسال (sent/failed/skipped + دلیل skipها) پس از اجرا
+  نمایش داده می‌شود.

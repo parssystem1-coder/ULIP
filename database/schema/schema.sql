@@ -70,6 +70,41 @@ CREATE TYPE analysis_mode AS ENUM ('BASIC', 'STANDARD', 'DEEP', 'BE_REUSE');
 CREATE TYPE review_decision AS ENUM ('ACCEPT', 'REJECT', 'CORRECT', 'MARK_UNCERTAIN');
 
 -- =====================================================================
+-- SOCIAL ACTIONS + OUTREACH (migration 0002, ADR-026)
+-- =====================================================================
+
+CREATE TYPE social_action_type AS ENUM (
+  'OPEN_PROFILE', 'FOLLOW_PROFILE', 'UNFOLLOW_PROFILE', 'SEND_MESSAGE'
+);
+
+CREATE TYPE social_action_status AS ENUM (
+  'PENDING', 'AWAITING_APPROVAL', 'APPROVED', 'EXECUTING', 'SUCCEEDED',
+  'FAILED', 'CANCELLED', 'NOT_SUPPORTED', 'MANUAL_FALLBACK'
+);
+
+CREATE TYPE social_action_attempt_outcome AS ENUM (
+  'SUCCESS', 'RETRYABLE_FAILURE', 'FATAL_FAILURE', 'NOT_SUPPORTED'
+);
+
+CREATE TYPE contact_channel AS ENUM (
+  'DIRECT_MESSAGE', 'PROFILE_VISIT', 'FOLLOW', 'UNFOLLOW', 'OTHER'
+);
+
+CREATE TYPE contact_direction AS ENUM ('OUTBOUND', 'MANUAL');
+
+CREATE TYPE message_template_status AS ENUM ('ACTIVE', 'DISABLED');
+
+CREATE TYPE outreach_campaign_status AS ENUM (
+  'DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'EXECUTING', 'PAUSED', 'COMPLETED', 'CANCELLED'
+);
+
+CREATE TYPE outreach_recipient_status AS ENUM (
+  'PENDING', 'ELIGIBLE', 'QUEUED', 'SENT', 'FAILED', 'SKIPPED', 'CANCELLED'
+);
+
+CREATE TYPE suppression_scope AS ENUM ('LEAD', 'BUSINESS', 'EMAIL', 'PHONE', 'DOMAIN');
+
+-- =====================================================================
 -- 2. TENANTS / USERS
 -- =====================================================================
 
@@ -677,7 +712,7 @@ CREATE TABLE jobs (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       UUID NOT NULL REFERENCES tenants(id),
   type            TEXT NOT NULL CHECK (type IN (
-    'DISCOVERY', 'NORMALIZATION', 'DEDUP', 'ANALYSIS', 'SCORING', 'EXPORT', 'REPROCESS')),
+    'DISCOVERY', 'NORMALIZATION', 'DEDUP', 'ANALYSIS', 'SCORING', 'EXPORT', 'REPROCESS', 'OUTREACH')),
   status          job_status NOT NULL DEFAULT 'PENDING',
   priority        INTEGER NOT NULL DEFAULT 0,
   current_step    job_step,
@@ -776,6 +811,147 @@ CREATE TABLE audit_logs (
 );
 
 CREATE INDEX idx_audit_logs_tenant_created ON audit_logs (tenant_id, created_at DESC);
+
+-- =====================================================================
+-- 14. SOCIAL ACTIONS / OUTREACH (migration 0002, ADR-026)
+-- =====================================================================
+
+CREATE TABLE message_templates (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id),
+  name        TEXT NOT NULL,
+  body        TEXT NOT NULL CHECK (body <> ''),
+  variables   JSONB NOT NULL DEFAULT '[]',
+  status      message_template_status NOT NULL DEFAULT 'ACTIVE',
+  version     INTEGER NOT NULL DEFAULT 1,
+  created_by  UUID REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, name)
+);
+
+CREATE TABLE outreach_campaigns (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id),
+  name          TEXT NOT NULL,
+  description   TEXT,
+  filters       JSONB NOT NULL DEFAULT '{}',
+  template_id   UUID NOT NULL REFERENCES message_templates(id),
+  status        outreach_campaign_status NOT NULL DEFAULT 'DRAFT',
+  job_id        UUID REFERENCES jobs(id),
+  approved_by   UUID REFERENCES users(id),
+  approved_at   TIMESTAMPTZ,
+  started_at    TIMESTAMPTZ,
+  completed_at  TIMESTAMPTZ,
+  cancelled_at  TIMESTAMPTZ,
+  cancel_reason TEXT,
+  created_by    UUID REFERENCES users(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_outreach_campaigns_tenant ON outreach_campaigns (tenant_id, status, created_at DESC);
+
+CREATE TABLE social_actions (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         UUID NOT NULL REFERENCES tenants(id),
+  lead_id           UUID NOT NULL REFERENCES leads(id),
+  source_type       TEXT NOT NULL CHECK (source_type <> ''),
+  type              social_action_type NOT NULL,
+  status            social_action_status NOT NULL DEFAULT 'PENDING',
+  idempotency_key   TEXT NOT NULL CHECK (idempotency_key <> ''),
+  external_id       TEXT,
+  profile_url       TEXT,
+  rendered_message  TEXT,
+  campaign_id       UUID REFERENCES outreach_campaigns(id),
+  template_id       UUID REFERENCES message_templates(id),
+  actor_id          UUID REFERENCES users(id),
+  error_code        TEXT,
+  error_message     TEXT,
+  executed_at       TIMESTAMPTZ,
+  manual_completed_at TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, idempotency_key)
+);
+
+CREATE INDEX idx_social_actions_tenant_status ON social_actions (tenant_id, status, created_at DESC);
+CREATE INDEX idx_social_actions_lead ON social_actions (tenant_id, lead_id, created_at DESC);
+
+CREATE TABLE social_action_attempts (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id),
+  action_id     UUID NOT NULL REFERENCES social_actions(id) ON DELETE CASCADE,
+  attempt_no    INTEGER NOT NULL CHECK (attempt_no >= 1),
+  outcome       social_action_attempt_outcome NOT NULL,
+  error_code    TEXT,
+  error_message TEXT,
+  retry_after_at TIMESTAMPTZ,
+  provider_ref  TEXT,
+  started_at    TIMESTAMPTZ NOT NULL,
+  finished_at   TIMESTAMPTZ,
+  UNIQUE (action_id, attempt_no)
+);
+
+CREATE INDEX idx_action_attempts_tenant ON social_action_attempts (tenant_id, action_id);
+
+CREATE TABLE outreach_recipients (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id),
+  campaign_id         UUID NOT NULL REFERENCES outreach_campaigns(id) ON DELETE CASCADE,
+  lead_id             UUID NOT NULL REFERENCES leads(id),
+  status              outreach_recipient_status NOT NULL DEFAULT 'PENDING',
+  ineligibility_reason TEXT,
+  source_type         TEXT,
+  external_id         TEXT,
+  profile_url         TEXT,
+  rendered_message    TEXT,
+  social_action_id    UUID REFERENCES social_actions(id),
+  attempts            INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  sent_at             TIMESTAMPTZ,
+  failure_code        TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (campaign_id, lead_id)
+);
+
+CREATE INDEX idx_outreach_recipients_campaign ON outreach_recipients (tenant_id, campaign_id, status);
+
+CREATE TABLE lead_contact_history (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id),
+  lead_id          UUID NOT NULL REFERENCES leads(id),
+  campaign_id      UUID REFERENCES outreach_campaigns(id),
+  social_action_id UUID REFERENCES social_actions(id),
+  channel          contact_channel NOT NULL,
+  direction        contact_direction NOT NULL,
+  occurred_at      TIMESTAMPTZ NOT NULL,
+  summary          TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_contact_history_lead ON lead_contact_history (tenant_id, lead_id, occurred_at DESC);
+
+CREATE TABLE suppression_entries (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id),
+  scope       suppression_scope NOT NULL,
+  lead_id     UUID REFERENCES leads(id),
+  business_id UUID REFERENCES businesses(id),
+  value_text  TEXT,
+  reason      TEXT NOT NULL CHECK (reason <> ''),
+  notes       TEXT,
+  created_by  UUID REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_suppression_target CHECK (
+       (scope = 'LEAD' AND lead_id IS NOT NULL)
+    OR (scope = 'BUSINESS' AND business_id IS NOT NULL)
+    OR (scope IN ('EMAIL', 'PHONE', 'DOMAIN') AND value_text IS NOT NULL)
+  ),
+  UNIQUE (tenant_id, scope, lead_id, business_id, value_text)
+);
+
+CREATE INDEX idx_suppression_lookup ON suppression_entries (tenant_id, scope, lead_id, business_id);
 
 COMMIT;
 

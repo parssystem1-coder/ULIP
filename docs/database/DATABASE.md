@@ -42,6 +42,11 @@ UsageCounter
 ScoringPolicy / ScoringPolicyVersion
 DecisionPolicy / DecisionPolicyVersion
 AuditLog
+SocialAction / SocialActionAttempt   (migration 0002, ADR-026)
+MessageTemplate                       (migration 0002, ADR-026)
+OutreachCampaign / OutreachRecipient  (migration 0002, ADR-026)
+LeadContactHistory                    (migration 0002, ADR-026)
+SuppressionEntry                      (migration 0002, ADR-026)
 ```
 
 Lifecycle values (leads.status and every workflow status) are Postgres enums —
@@ -516,7 +521,43 @@ created_at
 
 ---
 
-# 26. Index Strategy
+# 28. Social Actions / Outreach (migration 0002, ADR-026)
+
+```sql
+social_actions
+id, tenant_id, lead_id, source_type, type, status, idempotency_key,
+external_id, profile_url, rendered_message, campaign_id, template_id,
+actor_id, error_code, error_message, executed_at, manual_completed_at,
+created_at, updated_at
+-- idempotency: UNIQUE (tenant_id, idempotency_key)
+```
+
+`social_action_attempts`: یک ردیف به‌ازای هر فراخوانی provider
+(attempt_no، outcome، error_code، **retry_after_at** — محترم شمرده می‌شود،
+هرگز دور زده نمی‌شود، provider_ref، started_at/finished_at).
+
+`message_templates`: نام/بدنه با `{{placeholders}}`، variables، status،
+version — UNIQUE (tenant_id, name).
+
+`outreach_campaigns`: filters (همان مدل جهانی Business Type → Industry →
+Specialty → Sub-specialty + Location)، template_id، status با gate تأیید
+انسانی (DRAFT → PENDING_APPROVAL → APPROVED → EXECUTING → …)، job_id ارجاع به
+job نوع OUTREACH.
+
+`outreach_recipients`: **یک ردیف به‌ازای (campaign_id, lead_id) = یک پیام
+جداگانه برای هر lead — هرگز group chat نیست.** status شامل SENT/FAILED/
+SKIPPED با ineligibility_reason؛ retry-safe (SENT هرگز دوباره ارسال
+نمی‌شود).
+
+`lead_contact_history`: تاریخچه تماس (channel/direction/occurred_at) برای
+guard فاصلهٔ تماس و گزارش.
+
+`suppression_entries`: ممنوع‌التماس (scope: LEAD/BUSINESS/EMAIL/PHONE/DOMAIN)؛
+**همیشه برنده است** — lead ممنوع‌التماس هرگز تماس نمی‌گیرد.
+
+---
+
+# 29. Index Strategy
 
 ضروری:
 
@@ -531,6 +572,13 @@ evidence(lead_id)
 lead_contents(lead_id, published_at)
 ai_runs(tenant_id, created_at)
 audit_logs(tenant_id, created_at)
+social_actions(tenant_id, status, created_at DESC)
+social_actions(tenant_id, lead_id, created_at DESC)
+social_action_attempts(tenant_id, action_id)
+outreach_campaigns(tenant_id, status, created_at DESC)
+outreach_recipients(tenant_id, campaign_id, status)
+lead_contact_history(tenant_id, lead_id, occurred_at DESC)
+suppression_entries(tenant_id, scope, lead_id, business_id)
 ```
 
 ---
@@ -547,6 +595,8 @@ scoring_policy_versions.weights / thresholds
 decisions.decision_options / probabilities
 entity_resolution_candidates.resolvable_signals
 campaigns.filters
+outreach_campaigns.filters
+message_templates.variables
 ```
 
 اطلاعات اصلی و Queryable نباید بی‌دلیل داخل JSONB قرار گیرند.

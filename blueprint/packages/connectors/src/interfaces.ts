@@ -12,6 +12,18 @@ export type ConnectorCapability =
   | 'location'
   | 'engagement_metrics';
 
+/**
+ * Provider ACTION capabilities (ADR-026). Distinct from discovery capabilities:
+ * an action capability is advertised ONLY when the authorized integration
+ * genuinely performs the mutation. Never assume support; check at runtime.
+ */
+export type ActionCapability =
+  | 'OPEN_PROFILE'
+  | 'FOLLOW_PROFILE'
+  | 'UNFOLLOW_PROFILE'
+  | 'SEND_MESSAGE'
+  | 'BULK_SEND_MESSAGE';
+
 export interface SourceMetadata {
   type: string;
   displayName: string;
@@ -66,4 +78,15 @@ export interface LeadSourceConnector {
   search(request: DiscoveryRequest): Promise<DiscoveryResult>;
   fetch(identifier: string): Promise<RawEntity | null>;
   healthCheck(): Promise<HealthStatus>;
+}
+
+/**
+ * Optional extension: connectors whose authorized integration can also perform
+ * social actions advertise them here. A connector that does NOT implement this
+ * interface supports NO actions — callers must treat every action as
+ * NOT_SUPPORTED and fall back to the manual flow (ADR-026).
+ */
+export interface ActionCapableConnector extends LeadSourceConnector {
+  actionCapabilities(): ReadonlySet<ActionCapability>;
+  supportsAction(capability: ActionCapability): boolean;
 }
