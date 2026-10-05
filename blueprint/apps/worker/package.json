@@ -1,0 +1,23 @@
+{
+  "name": "@ulip/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@ulip/runtime": "workspace:*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}

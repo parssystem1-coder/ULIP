@@ -23,6 +23,8 @@ Current migrations:
 - `0002_social_actions_outreach` — social actions, message templates, outreach
   campaigns/recipients, lead contact history, suppression entries, and the
   `OUTREACH` job type (ADR-026). Mirrored in `database/schema/schema.sql`.
+- `0003_runtime_auth` — `users.api_key_hash` for the API-key authentication
+  boundary (Phase 14). Mirrored in `database/schema/schema.sql`.
 
 Note: the SQL files in this directory are plain, runner-agnostic SQL. The Phase 1
 task wraps them with the chosen runner's naming/tracking conventions.

@@ -94,3 +94,21 @@ docs/product/COMPETITORS.md      [O] optional future
 ```text
 database/seeds/001-taxonomy.sql   superseded by 001_core_reference.sql (old schema references)
 ```
+
+## Phase 14 additions (runtime foundation — implemented)
+
+```text
+blueprint/
+├── apps/
+│   ├── api/                 [I] real HTTP API runtime (auth, tenants, repos, /health /ready)
+│   ├── worker/              [I] real BullMQ worker (persistent-job claim, DISCOVERY flow)
+│   └── web/                 [I] real Next.js shell (dashboard/leads/campaigns/sources/settings)
+├── infra/
+│   ├── docker/              [I] docker-compose.runtime.yml + Dockerfile.runtime + Dockerfile.web
+│   ├── env/smoke.env        [I] dev smoke env template (placeholders only)
+│   └── scripts/             [I] migrate.ts (ledger runner) + smoke.ts (E2E flow)
+└── packages/
+    └── runtime/             [I] env validation, logger, pg Database+migrations, auth hashing, JobQueue
+```
+
+Everything else keeps its previous marker (blueprint/skeleton/fake provider).

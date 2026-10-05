@@ -51,3 +51,10 @@
   lead, progress + reporting.
 - Instagram status: OPEN_PROFILE supported; FOLLOW/UNFOLLOW/SEND_MESSAGE
   NOT_SUPPORTED (manual fallback) until an authorized API path exists.
+
+## Phase 14 — Runtime Foundation (shipped)
+
+Real runtime exists: Next.js web shell, HTTP API (sources/taxonomy/leads/
+campaigns/jobs/health), BullMQ worker on the persistent Job model, Dockerized
+PostgreSQL + Redis, migration runner, smoke flow verified end-to-end.
+Jev remains unplugged by design (optional DecisionProvider).

@@ -10,10 +10,36 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
-    "build": "pnpm typecheck && pnpm test"
+    "build": "pnpm typecheck && pnpm test",
+    "migrate": "node --experimental-strip-types infra/scripts/migrate.ts",
+    "dev:api": "tsx --tsconfig apps/api/tsconfig.json apps/api/src/main.ts",
+    "dev:worker": "tsx --tsconfig apps/worker/tsconfig.json apps/worker/src/main.ts",
+    "dev:web": "pnpm --filter @ulip/web dev",
+    "smoke": "node --experimental-strip-types infra/scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@ulip/connectors": "workspace:*",
+    "@ulip/domain": "workspace:*",
+    "@ulip/orchestration": "workspace:*",
+    "@ulip/outreach": "workspace:*",
+    "@ulip/runtime": "workspace:*",
+    "@ulip/social-actions": "workspace:*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1",
+    "next": "^15.1.6",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "tsx": "^4.19.2",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "typescript": "^5.7.0"
   }
 }

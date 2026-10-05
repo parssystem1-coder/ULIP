@@ -64,3 +64,31 @@ Performance review, documentation synchronization, migration notes, runbooks and
 ## Gate rule
 
 A phase is not complete when it merely compiles. It is complete when implementation, tests, documentation and review outputs exist.
+
+## Phase 14 — Runtime Foundation (implemented)
+
+The blueprint became a runnable system. Status markers: **implemented** below;
+everything not listed remains blueprint/skeleton (see REPOSITORY-FILE-TREE).
+
+- **packages/runtime** — env validation (zod, fail-fast), structured Logger,
+  guarded pg `Database` + migration runner (`schema_migrations` ledger),
+  scrypt/pbkdf2 auth hashing, shared BullMQ `JobQueue` transport.
+- **apps/api** — real HTTP runtime (node:http, no framework): request-id,
+  structured logging, api-key auth boundary, tenant context, global error
+  shape, /health + /ready, repositories for tenant/user/source/taxonomy/lead/
+  campaign/job, endpoints for sources, taxonomy, leads, campaigns, jobs
+  (POST /jobs persists first, then enqueues to BullMQ; transport-only Redis).
+- **apps/worker** — real BullMQ worker: exactly-once claim of the persistent
+  job row (PENDING→RUNNING), DISCOVERY flow stub, writes SUCCEEDED/FAILED +
+  job_events back to PostgreSQL. DB is truth; Redis is transport.
+- **apps/web** — real Next.js app (build passes) with minimal shell:
+  Dashboard / Leads / Campaigns / Sources / Settings.
+- **Docker** — `infra/docker/docker-compose.runtime.yml` (postgres:16 on host
+  5433 because a native postgres may occupy 5432, redis:7, migrator, api,
+  worker, web) + Dockerfile.runtime / Dockerfile.web.
+- **Verified on real infra** (this machine): migrations 0001–0003 applied to
+  Dockerized PostgreSQL; DB constraint suites green (8/8 core + 5/5 social);
+  smoke flow green end-to-end: health → bootstrap tenant → source → taxonomy
+  → lead → campaign → persistent job → worker processed → API SUCCEEDED;
+  API↔PG↔Redis↔Worker integration tests 5/5 green.
+- Jev is NOT integrated: optional `DecisionProvider` contract unchanged.

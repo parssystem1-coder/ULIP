@@ -115,10 +115,7 @@ CREATE TABLE social_actions (
 CREATE INDEX idx_social_actions_tenant_status ON social_actions (tenant_id, status, created_at DESC);
 CREATE INDEX idx_social_actions_lead ON social_actions (tenant_id, lead_id, created_at DESC);
 
--- campaign/template FKs added after those tables exist (see below).
-ALTER TABLE social_actions
-  ADD CONSTRAINT fk_social_actions_campaign FOREIGN KEY (campaign_id) REFERENCES outreach_campaigns(id),
-  ADD CONSTRAINT fk_social_actions_template FOREIGN KEY (template_id) REFERENCES message_templates(id);
+-- campaign/template FKs are added after those tables exist (see below).
 
 -- One row per provider call attempt; retry-after is stored (respected, never evaded).
 CREATE TABLE social_action_attempts (
@@ -183,6 +180,11 @@ CREATE TABLE outreach_campaigns (
 );
 
 CREATE INDEX idx_outreach_campaigns_tenant ON outreach_campaigns (tenant_id, status, created_at DESC);
+
+-- Now that message_templates and outreach_campaigns exist, attach the deferred FKs:
+ALTER TABLE social_actions
+  ADD CONSTRAINT fk_social_actions_campaign FOREIGN KEY (campaign_id) REFERENCES outreach_campaigns(id),
+  ADD CONSTRAINT fk_social_actions_template FOREIGN KEY (template_id) REFERENCES message_templates(id);
 
 -- One row per (campaign, lead) → ONE separate message per selected lead.
 CREATE TABLE outreach_recipients (

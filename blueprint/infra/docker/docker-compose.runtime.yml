@@ -1,0 +1,104 @@
+# ULIP runtime development environment (Phase 14).
+# Usage:  docker compose -f infra/docker/docker-compose.runtime.yml up --build
+#
+# postgres + redis are the real infrastructure; migrator applies
+# database/migrations once; api/worker/web are the three runtime processes.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ulip
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432" # host 5432 may be occupied by a native postgres; use 5433
+    volumes:
+      - ulip_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ulip"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - ulip_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrator:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.runtime
+    command: ["node", "--experimental-strip-types", "infra/scripts/migrate.ts"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ulip
+      AUTH_SECRET: dev-auth-secret-change-me
+      BOOTSTRAP_API_KEY: dev-bootstrap-key-change-me!!
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.runtime
+    command: ["pnpm", "dev:api"]
+    environment:
+      NODE_ENV: development
+      APP_PORT: "3001"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ulip
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: dev-auth-secret-change-me
+      BOOTSTRAP_API_KEY: dev-bootstrap-key-change-me!!
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.runtime
+    command: ["pnpm", "dev:worker"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ulip
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: dev-auth-secret-change-me
+      BOOTSTRAP_API_KEY: dev-bootstrap-key-change-me!!
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  ulip_postgres:
+  ulip_redis:

@@ -1,0 +1,30 @@
+# Runtime image for api / worker / migrator (Phase 14)
+FROM node:22-alpine
+
+WORKDIR /app
+
+RUN corepack enable
+
+# Copy workspace manifests first for layer caching
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json tsconfig.json ./
+COPY packages/runtime/package.json packages/runtime/package.json
+COPY packages/connectors/package.json packages/connectors/package.json
+COPY packages/domain/package.json packages/domain/package.json
+COPY packages/ai/package.json packages/ai/package.json
+COPY packages/scoring/package.json packages/scoring/package.json
+COPY packages/orchestration/package.json packages/orchestration/package.json
+COPY packages/social-actions/package.json packages/social-actions/package.json
+COPY packages/outreach/package.json packages/outreach/package.json
+COPY packages/api-contract/package.json packages/api-contract/package.json
+COPY apps/api/package.json apps/api/package.json
+COPY apps/worker/package.json apps/worker/package.json
+
+RUN pnpm install --frozen-lockfile=false
+
+# Copy sources
+COPY packages ./packages
+COPY apps ./apps
+COPY infra ./infra
+COPY database ./database
+
+EXPOSE 3001

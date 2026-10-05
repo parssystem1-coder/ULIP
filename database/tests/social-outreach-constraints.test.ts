@@ -180,15 +180,25 @@ test('outreach_recipients: one row per (campaign, lead)', async (t) => {
 
 test('down 0002 → up 0002 round-trips cleanly (no leftover objects)', async (t) => {
   if (!withDb(t)) return;
-  await applySchema();
-  await client.query(DOWN_0002);
+  // The suite DB holds the full schema (test 1) + seeded rows. down-0002 must
+  // return it to the 0001-only state and up-0002 must re-apply on top of it —
+  // exactly the lifecycle the migration runner performs.
+  await client.query(readFileSync(DOWN_0002, 'utf8'));
   const leftovers = await client.query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
      AND table_name IN ('social_actions','social_action_attempts','message_templates',
      'outreach_campaigns','outreach_recipients','lead_contact_history','suppression_entries')`,
   );
   assert.equal(leftovers.rowCount, 0);
-  await client.query(UP_0002);
+  const enumsGone = await client.query(
+    `SELECT 1 FROM pg_type WHERE typtype = 'e' AND typname IN
+     ('social_action_capability','social_action_type','social_action_status',
+      'social_action_attempt_outcome','contact_channel','contact_direction',
+      'message_template_status','outreach_campaign_status','outreach_recipient_status',
+      'suppression_scope')`,
+  );
+  assert.equal(enumsGone.rowCount, 0);
+  await client.query(readFileSync(UP_0002, 'utf8'));
   const restored = await client.query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
      AND table_name = 'social_actions'`,

@@ -129,16 +129,21 @@ INSERT INTO roles (name, description) VALUES
   ('VIEWER',   'Read-only');
 
 CREATE TABLE users (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id  UUID NOT NULL REFERENCES tenants(id),
-  email      TEXT NOT NULL,
-  name       TEXT,
-  role       TEXT NOT NULL REFERENCES roles(name),
-  status     TEXT NOT NULL DEFAULT 'ACTIVE',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id),
+  email         TEXT NOT NULL,
+  name          TEXT,
+  role          TEXT NOT NULL REFERENCES roles(name),
+  status        TEXT NOT NULL DEFAULT 'ACTIVE',
+  api_key_hash  TEXT,  -- migration 0003 (Phase 14): SHA-256 of API key; NULL = no key
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, email)
 );
+
+CREATE UNIQUE INDEX uniq_users_api_key_hash
+  ON users (api_key_hash)
+  WHERE api_key_hash IS NOT NULL;
 
 -- =====================================================================
 -- 3. SOURCES / RAW DATA

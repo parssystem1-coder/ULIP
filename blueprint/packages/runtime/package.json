@@ -1,0 +1,27 @@
+{
+  "name": "@ulip/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ulip/orchestration": "workspace:*",
+    "ioredis": "^5.4.1",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1",
+    "bullmq": "^5.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.0"
+  }
+}

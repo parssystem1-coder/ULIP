@@ -34,3 +34,9 @@ Thumbs.db
 *.sqlite3
 *.db
 tmp/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+.turbo/
