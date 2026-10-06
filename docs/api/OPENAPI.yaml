@@ -36,6 +36,7 @@ tags:
   - name: AI Providers
   - name: Social Actions
   - name: Outreach
+  - name: Evaluation
 
 paths:
   /health:
@@ -1260,6 +1261,162 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobStateError'
 
+  /evaluation/runs:
+    get:
+      tags: [Evaluation]
+      summary: List recent evaluation runs (read side)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvaluationRun'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+
+  /evaluation/runs/{runId}:
+    get:
+      tags: [Evaluation]
+      summary: Get one evaluation run with per-case results (structured errors only, no chain-of-thought)
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run:
+                    $ref: '#/components/schemas/EvaluationRun'
+                  caseResults:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvaluationCaseResult'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+
+  /evaluation/runs/{runId}/regression:
+    get:
+      tags: [Evaluation]
+      summary: Regression comparison of this run against the resolved baseline
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationRegressionReport'
+        '404':
+          description: Run or baseline not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+
+  /evaluation/corrections:
+    get:
+      tags: [Evaluation]
+      summary: List human corrections (kept separate from AI output)
+      parameters:
+        - name: datasetVersion
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvaluationCorrection'
+    post:
+      tags: [Evaluation]
+      summary: Record a human correction for an evaluated case (append-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationCorrectionInput'
+      responses:
+        '201':
+          description: Correction recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+        '404':
+          description: Referenced run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+
+  /evaluation/feedback-dataset:
+    get:
+      tags: [Evaluation]
+      summary: Export a draft feedback dataset with human corrections applied
+      parameters:
+        - name: datasetVersion
+          in: query
+          required: false
+          schema: { type: string, default: '1.0.0' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationFeedbackDataset'
+        '404':
+          description: Unknown dataset version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2149,3 +2306,117 @@ components:
               type: object
               properties:
                 code: { type: string, enum: [JOB_STATE_INVALID] }
+    # ---------------- evaluation (Phase 17, ADR-029) ----------------
+    EvaluationRun:
+      type: object
+      required: [runId, tenantId, versions, arm, armStatus, startedAt, finishedAt, metrics]
+      properties:
+        runId: { type: string, format: uuid, description: "Deterministic hash of (dataset, arm, provider, model, prompt, schema, taxonomy, policy) versions" }
+        tenantId: { type: string, format: uuid }
+        versions:
+          type: object
+          required: [datasetVersion, provider, model, promptVersion, schemaVersion, taxonomyVersion, scoringPolicyVersion]
+          properties:
+            datasetVersion: { type: string }
+            provider: { type: string }
+            model: { type: string }
+            promptVersion: { type: string }
+            schemaVersion: { type: string }
+            taxonomyVersion: { type: integer }
+            scoringPolicyVersion: { type: string }
+        arm: { type: string, enum: [RULES_ONLY, LLM_ONLY, RULES_THEN_LLM, LLM_THEN_DECISION_PROVIDER, RULES_LLM_DECISION_PROVIDER] }
+        armStatus: { type: string, enum: [EXECUTED, NOT_CONFIGURED, FAILED] }
+        armReason: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        metrics: { type: object, description: "Full EvalRunMetrics block (overall, byDimension, macroF1, calibration, latency, cost, errors, abstentionRate, coverage, outcomeAccuracy, byTag, scoreEvaluation)" }
+    EvaluationCaseResult:
+      type: object
+      required: [caseId, exactMatch, dimensionAccuracy, reviewOutcome, detail]
+      properties:
+        caseId: { type: string }
+        exactMatch: { type: boolean }
+        dimensionAccuracy: { type: number }
+        meanConfidence: { type: number, nullable: true }
+        errorCategory:
+          type: string
+          nullable: true
+          enum: [SOURCE_DATA_MISSING, NORMALIZATION_ERROR, TAXONOMY_MISMATCH, MODEL_MISUNDERSTANDING, GROUNDING_FAILURE, THRESHOLD_ERROR, SCORING_ERROR, HUMAN_LABEL_DISAGREEMENT, OTHER, null]
+        reviewOutcome:
+          type: object
+          properties:
+            expected: { type: string, nullable: true }
+            actual: { type: string, nullable: true }
+            correct: { type: boolean, nullable: true }
+        latencyMs: { type: integer }
+        tokens:
+          type: object
+          nullable: true
+          properties:
+            input: { type: integer }
+            output: { type: integer }
+        detail: { type: object, description: "Structured per-dimension outcomes, scores and error detail — no chain-of-thought" }
+    EvaluationRegressionReport:
+      type: object
+      required: [baselineRunId, currentRunId, datasetVersion, findings, improved, hasRegressions]
+      properties:
+        baselineRunId: { type: string, format: uuid }
+        currentRunId: { type: string, format: uuid }
+        datasetVersion: { type: string }
+        datasetVersionChanged: { type: boolean }
+        findings:
+          type: array
+          items:
+            type: object
+            required: [metric, category, baseline, current, delta, severity]
+            properties:
+              metric: { type: string, description: "Dotted path, e.g. byDimension.specialty.f1" }
+              category: { type: string }
+              baseline: { type: number }
+              current: { type: number }
+              delta: { type: number }
+              threshold: { type: number }
+              severity: { type: string, enum: [CRITICAL, MAJOR, MINOR] }
+        improved:
+          type: array
+          items:
+            type: object
+            properties:
+              metric: { type: string }
+              delta: { type: number }
+        hasRegressions: { type: boolean, description: "Release gate: true when CRITICAL or MAJOR regressions exist" }
+    EvaluationCorrection:
+      type: object
+      required: [id, caseId, datasetVersion, field, correctedValue]
+      properties:
+        id: { type: string, format: uuid }
+        caseId: { type: string }
+        datasetVersion: { type: string }
+        field: { type: string, enum: [businessType, industry, specialty, subSpecialty, brand, location, outcome, score] }
+        originalValue: { nullable: true }
+        correctedValue: { nullable: true }
+        reviewerId: { type: string, format: uuid, nullable: true }
+        reviewerNote: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    EvaluationCorrectionInput:
+      type: object
+      required: [caseId, datasetVersion, field, correctedValue]
+      properties:
+        runId: { type: string, format: uuid, nullable: true }
+        caseId: { type: string }
+        datasetVersion: { type: string }
+        field: { type: string, enum: [businessType, industry, specialty, subSpecialty, brand, location, outcome, score] }
+        originalValue: { nullable: true }
+        correctedValue: { nullable: true }
+        reviewerNote: { type: string, nullable: true }
+    EvaluationFeedbackDataset:
+      type: object
+      required: [datasetVersion, provenance, cases]
+      properties:
+        datasetVersion: { type: string, description: "Next-version draft, e.g. 1.1.0-draft" }
+        provenance: { type: string }
+        taxonomySnapshot: { type: array, items: { type: object } }
+        taxonomyVersion: { type: integer }
+        cases:
+          type: array
+          items: { type: object }

@@ -10,6 +10,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TransitionError } from '@ulip/orchestration';
+import { compareRuns, loadDefaultDataset } from '@ulip/eval';
 import type { AppContext } from './composer.ts';
 import { errorReply, jsonReply, readJsonBody, type RequestContext } from './http.ts';
 import type { AuthenticatedContext } from './middleware.ts';
@@ -597,5 +598,113 @@ export function reprocessLead(app: AppContext) {
       }
       throw err;
     }
+  };
+}
+
+// ------------------------------------------------------- evaluation (Phase 17)
+
+const CorrectionSchema = z.object({
+  runId: z.string().uuid().nullable().optional(),
+  caseId: z.string().min(1),
+  datasetVersion: z.string().min(1),
+  field: z.enum(['businessType', 'industry', 'specialty', 'subSpecialty', 'brand', 'location', 'outcome', 'score']),
+  originalValue: z.unknown().nullable().optional(),
+  correctedValue: z.unknown(),
+  reviewerNote: z.string().max(2000).nullable().optional(),
+});
+
+/** GET /evaluation/runs — recent evaluation runs for the tenant. */
+export function listEvaluationRuns(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const limit = Number(ctx.query.get('limit') ?? '20');
+    const runs = await app.evaluation.listRuns(ctx.principal.tenantId, Number.isFinite(limit) ? Math.min(limit, 100) : 20);
+    jsonReply(ctx, 200, { data: runs });
+  };
+}
+
+/** GET /evaluation/runs/:runId — one run + per-case results (structured only). */
+export function getEvaluationRun(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const runId = (ctx as unknown as { params: Record<string, string> }).params['runId'] ?? '';
+    if (!UUID_RE.test(runId)) return errorReply(ctx, 404, 'NOT_FOUND', 'evaluation run not found in tenant');
+    const run = await app.evaluation.findRun(ctx.principal.tenantId, runId);
+    if (run === null) return errorReply(ctx, 404, 'NOT_FOUND', 'evaluation run not found in tenant');
+    const caseResults = await app.evaluation.listCaseResults(ctx.principal.tenantId, runId, 1000);
+    jsonReply(ctx, 200, {
+      run,
+      caseResults: caseResults.map((c) => ({
+        caseId: c.caseId,
+        exactMatch: c.exactMatch,
+        dimensionAccuracy: c.dimensionAccuracy,
+        meanConfidence: c.meanConfidence,
+        errorCategory: c.errorCategory,
+        reviewOutcome: { expected: c.outcomeExpected, actual: c.outcome, correct: c.outcomeCorrect },
+        latencyMs: c.latencyMs,
+        tokens: c.tokensInput === null && c.tokensOutput === null ? null : { input: c.tokensInput, output: c.tokensOutput },
+        detail: c.detail,
+      })),
+    });
+  };
+}
+
+/** GET /evaluation/runs/:runId/regression — compare vs the resolved baseline. */
+export function getEvaluationRunRegression(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const runId = (ctx as unknown as { params: Record<string, string> }).params['runId'] ?? '';
+    if (!UUID_RE.test(runId)) return errorReply(ctx, 404, 'NOT_FOUND', 'evaluation run not found in tenant');
+    const run = await app.evaluation.findRun(ctx.principal.tenantId, runId);
+    if (run === null) return errorReply(ctx, 404, 'NOT_FOUND', 'evaluation run not found in tenant');
+    const baseline = await app.evaluation.findBaselineRun(ctx.principal.tenantId, run);
+    if (baseline === null) {
+      return errorReply(ctx, 404, 'NOT_FOUND', 'no baseline run available for this arm/dataset yet');
+    }
+    jsonReply(ctx, 200, compareRuns(baseline, run));
+  };
+}
+
+/** GET /evaluation/corrections — human corrections (never AI output). */
+export function listEvaluationCorrections(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const datasetVersion = ctx.query.get('datasetVersion') ?? undefined;
+    const corrections = await app.evaluation.listCorrections(ctx.principal.tenantId, datasetVersion);
+    jsonReply(ctx, 200, { data: corrections });
+  };
+}
+
+/** POST /evaluation/corrections — record a human correction (append-only). */
+export function addEvaluationCorrection(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const parsed = CorrectionSchema.safeParse(ctx.body);
+    if (!parsed.success) return validationError(ctx, parsed.error);
+    if (parsed.data.runId !== undefined && parsed.data.runId !== null) {
+      const run = await app.evaluation.findRun(ctx.principal.tenantId, parsed.data.runId);
+      if (run === null) return errorReply(ctx, 404, 'NOT_FOUND', 'evaluation run not found in tenant');
+    }
+    const correction = await app.evaluation.addCorrection({
+      tenantId: ctx.principal.tenantId,
+      runId: parsed.data.runId ?? null,
+      caseId: parsed.data.caseId,
+      datasetVersion: parsed.data.datasetVersion,
+      field: parsed.data.field,
+      originalValue: parsed.data.originalValue ?? null,
+      correctedValue: parsed.data.correctedValue,
+      reviewerId: ctx.principal.userId,
+      reviewerNote: parsed.data.reviewerNote ?? undefined,
+    });
+    jsonReply(ctx, 201, correction);
+  };
+}
+
+/** GET /evaluation/feedback-dataset — corrections merged onto the dataset (draft). */
+export function exportEvaluationFeedbackDataset(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const datasetVersion = ctx.query.get('datasetVersion') ?? '1.0.0';
+    if (datasetVersion !== loadDefaultDataset().datasetVersion) {
+      return errorReply(ctx, 404, 'NOT_FOUND', `no committed dataset version ${datasetVersion}`);
+    }
+    const base = loadDefaultDataset();
+    const corrections = await app.evaluation.listCorrections(ctx.principal.tenantId, datasetVersion);
+    const draft = app.evaluation.exportFeedbackDataset(base, corrections);
+    jsonReply(ctx, 200, draft);
   };
 }

@@ -81,6 +81,9 @@ importers:
       '@ulip/discovery':
         specifier: workspace:*
         version: link:../../packages/discovery
+      '@ulip/eval':
+        specifier: workspace:*
+        version: link:../../packages/eval
       '@ulip/orchestration':
         specifier: workspace:*
         version: link:../../packages/orchestration
@@ -256,6 +259,34 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/eval:
+    dependencies:
+      '@ulip/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@ulip/analysis':
+        specifier: workspace:*
+        version: link:../analysis
+      '@ulip/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ulip/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@ulip/scoring':
+        specifier: workspace:*
+        version: link:../scoring
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

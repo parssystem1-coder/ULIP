@@ -11,6 +11,7 @@
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "build": "pnpm typecheck && pnpm test",
+    "eval": "node --experimental-strip-types packages/eval/src/cli.ts --no-db",
     "migrate": "node --experimental-strip-types infra/scripts/migrate.ts",
     "dev:api": "tsx --tsconfig apps/api/tsconfig.json apps/api/src/main.ts",
     "dev:worker": "tsx --tsconfig apps/worker/tsconfig.json apps/worker/src/main.ts",

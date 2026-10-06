@@ -172,3 +172,28 @@ docs/api/OPENAPI.yaml                              [I] /leads/{leadId}/analysis
 Analysis status change: ANALYSIS/REPROCESS job types upgraded [stub→implemented];
 `GET /leads/{id}(/analysis|/evidence|/scores)` + `POST /leads/{id}/reprocess`
 implemented per OPENAPI.
+
+Phase 17 additions (ADR-029):
+```text
+packages/eval/                  [I] @ulip/eval — evaluation framework:
+  dataset/eval-dataset-v1.json  [I] 34-case human-labeled dataset v1.0.0
+  src/contracts.ts              [I] typed eval contracts (no unknown)
+  src/dataset.ts + tags.ts      [I] loader + validation (human provenance)
+  src/metrics.ts                [I] per-dimension metrics, calibration, cost
+  src/errors.ts                 [I] 9-category error taxonomy
+  src/calibration.ts            [I] buckets, ECE, verdict
+  src/score-eval.ts             [I] separation/dominance/correlation findings
+  src/arms.ts                   [I] 5 arms + deterministic alias rules
+  src/runner.ts                 [I] evidence-pipeline runner, deterministic runId
+  src/regression.ts             [I] per-metric regression gate (CRITICAL/MAJOR/MINOR)
+  src/store.ts                  [I] DbEvalStore (runs, corrections, feedback export)
+  src/report.ts                 [I] deterministic text reports
+  src/cli.ts                    [I] pnpm eval entrypoint
+  baselines/baseline-*-v1.json  [I] committed reproducible baselines
+  test/                         [I] dataset/metrics/runner unit + integration.eval-db (real PG)
+apps/api/src/controllers.ts     [I] + /evaluation/* read endpoints + corrections
+packages/eval + apps/api deps   [I] @ulip/eval workspace link
+
+Docs: ADR-029, PHASE-17 prompt, DATABASE.md §29, API.md §9,
+EVALUATION-AND-BENCHMARKING.md status block.
+```

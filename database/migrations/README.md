@@ -25,6 +25,12 @@ Current migrations:
   `OUTREACH` job type (ADR-026). Mirrored in `database/schema/schema.sql`.
 - `0003_runtime_auth` — `users.api_key_hash` for the API-key authentication
   boundary (Phase 14). Mirrored in `database/schema/schema.sql`.
+- `0004_evaluation` — `evaluation_runs`, `evaluation_case_results` and
+  `evaluation_corrections` for the reproducible AI evaluation framework
+  (Phase 17, ADR-029). Deterministic run ids, tenant isolation, and
+  trigger-enforced append-only history. Mirrored in
+  `database/schema/schema.sql`. `ai_runs` is deliberately not duplicated: an
+  evaluation run measures a frozen dataset, it is not a per-lead provider call.
 
 Note: the SQL files in this directory are plain, runner-agnostic SQL. The Phase 1
 task wraps them with the chosen runner's naming/tracking conventions.

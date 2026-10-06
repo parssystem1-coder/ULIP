@@ -41,6 +41,9 @@ When code differs from architecture, either update the architecture or create an
 - `docs/adr/ADR-028-ai-analysis-scoring-runtime.md` +
   `prompts/phases/PHASE-16-AI-ANALYSIS-SCORING.md` — live AI analysis/scoring
   runtime (`@ulip/ai` provider selection, `@ulip/analysis` pipeline)
+- `docs/adr/ADR-029-evaluation-calibration-regression.md` +
+  `prompts/phases/PHASE-17-EVALUATION-CALIBRATION-REGRESSION.md` —
+  evaluation framework (`@ulip/eval`, dataset, `pnpm eval` regression gate)
 - `blueprint/packages/analysis` — evidence → classification → policy scoring →
   lead-state transition implementation (`buildEvidenceDrafts`,
   `computeDimensions`, `DbAnalysisStore`, `runAnalysisFlow`)

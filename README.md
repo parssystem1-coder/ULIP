@@ -188,3 +188,18 @@ SCORED → QUALIFIED | REVIEW_REQUIRED | REJECTED`.
 
 See `docs/adr/ADR-028-ai-analysis-scoring-runtime.md` and
 `prompts/phases/PHASE-16-AI-ANALYSIS-SCORING.md`.
+
+### AI evaluation & regression (Phase 17)
+
+Quality is measured, not assumed (ADR-029): `pnpm eval` runs the
+`@ulip/eval` framework over a 34-case human-labeled dataset
+(`packages/eval/dataset/eval-dataset-v1.json`) through the real evidence
+pipeline, reports per-dimension accuracy/precision/recall/F1, calibration,
+score diagnostics and a nine-category error taxonomy, and gates releases on
+per-category regressions against committed baselines
+(`packages/eval/baselines/`). Human corrections are append-only
+(`evaluation_corrections`) and export into the next labeled dataset draft.
+Live-provider evaluation is explicit (`ULIP_EVAL_LIVE=1`) — never in tests.
+
+See `docs/adr/ADR-029-evaluation-calibration-regression.md` and
+`prompts/phases/PHASE-17-EVALUATION-CALIBRATION-REGRESSION.md`.

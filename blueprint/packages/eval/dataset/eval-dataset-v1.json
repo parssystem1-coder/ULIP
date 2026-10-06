@@ -1,0 +1,1100 @@
+{
+  "datasetVersion": "1.0.0",
+  "provenance": "Human-labeled evaluation dataset v1. All expected labels and expected outcomes were written by hand by the ULIP team (2026-10) from business knowledge. No model-generated labels are included. The frozen taxonomySnapshot mirrors database/seeds/001_core_reference.sql (v1) and extends it with two dataset-scoped specialty nodes (Skin Care, Nail Art, ids ...007/...008 in the seed id space) so free-text specialties under test have a canonical label space.",
+  "taxonomyVersion": 1,
+  "taxonomySnapshot": [
+    { "nodeId": "10000000-0000-0000-0000-000000000001", "label": "Service Provider", "nodeKind": "BUSINESS_TYPE" },
+    { "nodeId": "10000000-0000-0000-0000-000000000002", "label": "Retailer", "nodeKind": "BUSINESS_TYPE" },
+    { "nodeId": "10000000-0000-0000-0000-000000000003", "label": "Wholesaler", "nodeKind": "BUSINESS_TYPE" },
+    { "nodeId": "10000000-0000-0000-0000-000000000004", "label": "Manufacturer", "nodeKind": "BUSINESS_TYPE" },
+    { "nodeId": "10000000-0000-0000-0000-000000000005", "label": "Distributor", "nodeKind": "BUSINESS_TYPE" },
+    { "nodeId": "10000000-0000-0000-0000-000000000006", "label": "Professional", "nodeKind": "BUSINESS_TYPE" },
+    { "nodeId": "20000000-0000-0000-0000-000000000001", "label": "Beauty", "nodeKind": "INDUSTRY" },
+    { "nodeId": "20000000-0000-0000-0000-000000000002", "label": "Legal", "nodeKind": "INDUSTRY" },
+    { "nodeId": "20000000-0000-0000-0000-000000000003", "label": "Printing", "nodeKind": "INDUSTRY" },
+    { "nodeId": "20000000-0000-0000-0000-000000000004", "label": "Beauty", "nodeKind": "INDUSTRY" },
+    { "nodeId": "20000000-0000-0000-0000-000000000005", "label": "Beauty", "nodeKind": "INDUSTRY" },
+    { "nodeId": "20000000-0000-0000-0000-000000000006", "label": "Cosmetics", "nodeKind": "INDUSTRY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000001", "label": "Hair Coloring", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000002", "label": "Balayage", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000003", "label": "Family Law", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000004", "label": "Printer Parts", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000005", "label": "Hair Care Products", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000006", "label": "Salon Equipment", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000007", "label": "Skin Care", "nodeKind": "SPECIALTY" },
+    { "nodeId": "30000000-0000-0000-0000-000000000008", "label": "Nail Art", "nodeKind": "SPECIALTY" },
+    { "nodeId": "40000000-0000-0000-0000-000000000001", "label": "Balayage on Dark Hair", "nodeKind": "SUB_SPECIALTY" }
+  ],
+  "taxonomyAliases": [
+    { "label": "Wholesaler", "kind": "BUSINESS_TYPE", "aliases": ["wholesaler", "wholesale", "عمده فروش", "عمده‌فروش", "عمده فروشی", "بورس"] },
+    { "label": "Retailer", "kind": "BUSINESS_TYPE", "aliases": ["retailer", "retail", "shop", "فروشگاه", "خرده فروشی"] },
+    { "label": "Service Provider", "kind": "BUSINESS_TYPE", "aliases": ["service provider", "salon", "استودیو", "کلینیک", "خدمات", "آرایشگاه", "سالن زیبایی", "سالن آرایش", "سالن ناخن"] },
+    { "label": "Manufacturer", "kind": "BUSINESS_TYPE", "aliases": ["manufacturer", "manufacturing", "تولیدی", "تولیدکننده", "تولید کننده", "سازنده"] },
+    { "label": "Distributor", "kind": "BUSINESS_TYPE", "aliases": ["distributor", "distribution", "توزیع", "توزیع کننده", "پخش", "پخش کننده"] },
+    { "label": "Professional", "kind": "BUSINESS_TYPE", "aliases": ["professional", "lawyer", "attorney", "law firm", "وکیل", "وکالت", "مشاور"] },
+
+    { "label": "Beauty", "kind": "INDUSTRY", "aliases": ["beauty", "hair salon", "salon", "زیبایی", "آرایشگاه زنانه", "سالن زیبایی"] },
+    { "label": "Legal", "kind": "INDUSTRY", "aliases": ["legal", "law", "وکالت", "حقوق"] },
+    { "label": "Printing", "kind": "INDUSTRY", "aliases": ["printing", "printer", "print", "چاپ", "پرینتر", "پرينتر", "چاپخانه"] },
+    { "label": "Cosmetics", "kind": "INDUSTRY", "aliases": ["cosmetics", "آرایشی", "بهداشتی", "کاسمتیک"] },
+
+    { "label": "Hair Coloring", "kind": "SPECIALTY", "aliases": ["hair coloring", "hair color", "coloring", "رنگ مو", "رنگ و لایت", "صبغة الشعر"] },
+    { "label": "Balayage", "kind": "SPECIALTY", "aliases": ["balayage", "بالایاژ", "بالیاژ", "بالياژ"] },
+    { "label": "Family Law", "kind": "SPECIALTY", "aliases": ["family law", "divorce", "custody", "حقوق خانواده", "طلاق", "حضانت"] },
+    { "label": "Printer Parts", "kind": "SPECIALTY", "aliases": ["printer parts", "قطعات پرینتر", "قطعات پرينتر", "قطعات دستگاه چاپ"] },
+    { "label": "Hair Care Products", "kind": "SPECIALTY", "aliases": ["hair care", "shampoo", "شامپو", "نرم‌کننده", "نرم کننده", "مراقبت مو", "محصولات مو"] },
+    { "label": "Salon Equipment", "kind": "SPECIALTY", "aliases": ["salon equipment", "تجهیزات سالن", "صندلی آرایشگاه", "صندلی آرایشی"] },
+    { "label": "Skin Care", "kind": "SPECIALTY", "aliases": ["skin care", "مراقبت پوست", "پاکسازی", "پوست"] },
+    { "label": "Nail Art", "kind": "SPECIALTY", "aliases": ["nail art", "کاشت ناخن", "طراحی ناخن", "ناخن"] },
+
+    { "label": "Balayage on Dark Hair", "kind": "SUB_SPECIALTY", "aliases": ["balayage on dark hair", "بالیاژ موی مشکی", "بالایاژ موی مشکی", "بالایاژ روی پایه مشکی", "بالیاژ روی پایه مشکی", "دکلره مشکی"] },
+
+    { "label": "HP", "kind": "BRAND", "aliases": ["HP"] },
+    { "label": "Canon", "kind": "BRAND", "aliases": ["Canon"] },
+    { "label": "Epson", "kind": "BRAND", "aliases": ["Epson"] },
+    { "label": "Brother", "kind": "BRAND", "aliases": ["Brother", "برادر"] },
+    { "label": "Xerox", "kind": "BRAND", "aliases": ["Xerox"] },
+    { "label": "Ricoh", "kind": "BRAND", "aliases": ["Ricoh"] },
+    { "label": "Kyocera", "kind": "BRAND", "aliases": ["Kyocera"] },
+    { "label": "Samsung", "kind": "BRAND", "aliases": ["Samsung", "سامسونگ"] }
+  ],
+  "locationAliases": [
+    { "alias": "tehran", "city": "Tehran" },
+    { "alias": "تهران", "city": "Tehran" },
+    { "alias": "طهران", "city": "Tehran" },
+    { "alias": "Teheran", "city": "Tehran" },
+    { "alias": "shiraz", "city": "Shiraz" },
+    { "alias": "شیراز", "city": "Shiraz" },
+    { "alias": "mashhad", "city": "Mashhad" },
+    { "alias": "مشهد", "city": "Mashhad" },
+    { "alias": "isfahan", "city": "Isfahan" },
+    { "alias": "اصفهان", "city": "Isfahan" },
+    { "alias": "tabriz", "city": "Tabriz" },
+    { "alias": "تبریز", "city": "Tabriz" },
+    { "alias": "karaj", "city": "Karaj" },
+    { "alias": "کرج", "city": "Karaj" },
+    { "alias": "ahvaz", "city": "Ahvaz" },
+    { "alias": "اهواز", "city": "Ahvaz" },
+    { "alias": "rasht", "city": "Rasht" },
+    { "alias": "رشت", "city": "Rasht" },
+    { "alias": "qom", "city": "Qom" },
+    { "alias": "قم", "city": "Qom" },
+    { "alias": "kerman", "city": "Kerman" },
+    { "alias": "کرمان", "city": "Kerman" }
+  ],
+  "cases": [
+    {
+      "caseId": "ev-001",
+      "description": "Canonical example 1: HP printer parts wholesaler in Tehran (English, strong evidence).",
+      "tags": ["CANONICAL", "BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "BRAND", "LOCATION", "ENGLISH", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "HP Printer Parts Wholesale",
+        "bio": "Wholesaler of genuine HP printer parts and accessories in Tehran. Printer spare parts for HP, Canon and Epson.",
+        "categories": ["Printer Parts", "Wholesale"],
+        "city": "Tehran",
+        "country": "IR",
+        "website": "https://hp-parts-tehran.example.com",
+        "contactChannels": ["PHONE", "EMAIL"],
+        "username": "hp_parts_wholesale",
+        "displayName": "HP Parts Wholesale Tehran",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "HP printer parts in stock: fuser assemblies and pickup rollers.", "daysAgo": 2 },
+          { "text": "Wholesale price list for HP and Canon spare parts available.", "daysAgo": 5 },
+          { "text": "New Epson pickup roller shipment arrived.", "daysAgo": 9 },
+          { "text": "Bulk orders for printer parts welcome.", "daysAgo": 12 },
+          { "text": "Spare parts catalog updated for the fall season.", "daysAgo": 20 }
+        ],
+        "followers": 4200,
+        "postsCount": 310
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": ["HP", "Canon", "Epson"],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-002",
+      "description": "Canonical example 2: Shiraz women's hair salon specializing in coloring/balayage (Persian, strong evidence).",
+      "tags": ["CANONICAL", "BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "SUB_SPECIALTY", "LOCATION", "PERSIAN", "ZWNJ", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "سالن زیبایی نیلا",
+        "bio": "آرایشگاه زنانه در شیراز — متخصص رنگ مو، بالیاژ و کوتاهی مو",
+        "categories": ["سالن زیبایی"],
+        "city": "شیراز",
+        "country": "IR",
+        "website": "https://nila-salon.example.ir",
+        "contactChannels": ["PHONE", "INSTAGRAM_DM"],
+        "username": "nila_salon_shiraz",
+        "displayName": "سالن زیبایی نیلا شیراز",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "رنگ و لایت مو با بهترین متریال", "daysAgo": 3 },
+          { "text": "بالایاژ موی مشکی با کیفیت اروپایی", "daysAgo": 6 },
+          { "text": "رنگ مو بدون آمونیاک", "daysAgo": 10 },
+          { "text": "کوتاهی و لایه‌بندی مو", "daysAgo": 14 },
+          { "text": "رنگ و لایت ویژه عروض", "daysAgo": 18 }
+        ],
+        "followers": 8300,
+        "postsCount": 540
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Hair Coloring", "Balayage"],
+        "subSpecialty": ["Balayage on Dark Hair"],
+        "brand": [],
+        "location": "Shiraz"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-003",
+      "description": "Wholesaler of Canon/Epson printer spare parts in Mashhad (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "BRAND", "LOCATION", "PERSIAN", "ZWNJ", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "عمده فروشی قطعات پرینتر مشهد",
+        "bio": "عمده فروش قطعات پرینتر Canon و Epson در مشهد",
+        "categories": ["عمده فروشی"],
+        "city": "مشهد",
+        "contactChannels": ["PHONE", "TELEGRAM"],
+        "username": "mashhad_printer_parts",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "قطعات پرینتر Canon اصل موجود", "daysAgo": 4 },
+          { "text": "قطعات Epson تازه رسید", "daysAgo": 8 },
+          { "text": "همکار محترم، لیست قیمت عمده ارسال می‌شود", "daysAgo": 11 },
+          { "text": "خرید عمده قطعات پرینتر", "daysAgo": 15 },
+          { "text": "فنیل و رولر Canon موجود شد", "daysAgo": 21 }
+        ],
+        "followers": 2100,
+        "postsCount": 180
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": ["Canon", "Epson"],
+        "location": "Mashhad"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-004",
+      "description": "Samsung electronics wholesaler in Karaj, Arabic yeh/kaf character variants (industry not representable in the frozen taxonomy).",
+      "tags": ["BUSINESS_TYPE", "BRAND", "LOCATION", "PERSIAN", "ARABIC_VARIANTS", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "عمده فروشي سامسونگ كرج",
+        "bio": "عمده فروشي لوازم الكترونيكي و موبايل — سامسونگ در كرج",
+        "categories": ["لوازم الكترونيكي"],
+        "city": "كرج",
+        "username": "samsung_karaj_wholesale",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "موجودي سامسونگ جديد رسيد", "daysAgo": 3 },
+          { "text": "لوازم الكترونيكي همكار", "daysAgo": 9 },
+          { "text": "ليست قيمت عمده", "daysAgo": 16 }
+        ],
+        "followers": 3300,
+        "postsCount": 260
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": null,
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": ["Samsung"],
+        "location": "Karaj"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-005",
+      "description": "Mixed-language auto parts wholesaler in Isfahan (industry outside the frozen taxonomy — taxonomy-gap probe).",
+      "tags": ["BUSINESS_TYPE", "LOCATION", "MIXED", "AMBIGUOUS", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "AutoParts Wholesale Isfahan",
+        "bio": "عمده فروش لوازم یدکی خودرو — wholesale auto parts supplier in Isfahan",
+        "city": "اصفهان",
+        "username": "autoparts_isfahan",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "فروش فقط به همکار — wholesale only", "daysAgo": 7 },
+          { "text": "Engine parts wholesale price list", "daysAgo": 13 },
+          { "text": "Send your shop documents to register", "daysAgo": 30 }
+        ],
+        "followers": 1500,
+        "postsCount": 210
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": null,
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Isfahan"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-006",
+      "description": "Retail shop for printer parts in Shiraz (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "BRAND", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "فروشگاه قطعات پرینتر شیراز",
+        "bio": "فروش لوازم و قطعات پرینتر — فروشگاه حضوری در شیراز",
+        "categories": ["لوازم جانبی"],
+        "city": "شیراز",
+        "contactChannels": ["PHONE"],
+        "username": "shiraz_printer_shop",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "قطعات پرینتر HP موجود", "daysAgo": 5 },
+          { "text": "فروش گیج و متری پرینتر", "daysAgo": 12 },
+          { "text": "دستگاه فتوکپی برادر موجود", "daysAgo": 18 }
+        ],
+        "followers": 950,
+        "postsCount": 120
+      },
+      "expected": {
+        "businessType": "Retailer",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": ["HP", "Brother"],
+        "location": "Shiraz"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-007",
+      "description": "Cosmetics retail shop in Tehran with ZWNJ-heavy Persian (industry: Cosmetics).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "ZWNJ", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "Zi Beauty Shop",
+        "bio": "فروشگاه آرایشی و بهداشتی — محصولات مراقبت از پوست و مو",
+        "categories": ["آرایشی بهداشتی"],
+        "city": "تهران",
+        "website": "https://zi-beauty.example.ir",
+        "username": "zi_beauty_shop",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "شامپو و نرم‌کننده جدید رسید", "daysAgo": 3 },
+          { "text": "کرم مراقبت پوست موجود است", "daysAgo": 9 },
+          { "text": "لوازم آرایشی اورجینال", "daysAgo": 16 }
+        ],
+        "followers": 2800,
+        "postsCount": 340
+      },
+      "expected": {
+        "businessType": "Retailer",
+        "industry": "Cosmetics",
+        "specialty": ["Hair Care Products"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-008",
+      "description": "English law office (Professional business type, Legal industry, Family Law specialty).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "ENGLISH", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "Rahimi Law Office",
+        "bio": "Law firm in Tehran — family law, divorce and custody cases. Licensed attorney.",
+        "city": "Tehran",
+        "website": "https://rahimi-law.example.com",
+        "contactChannels": ["PHONE", "EMAIL"],
+        "username": "rahimi_law",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "Family law consultation available", "daysAgo": 4 },
+          { "text": "Divorce case settled for our client", "daysAgo": 11 },
+          { "text": "Custody mediation service", "daysAgo": 17 },
+          { "text": "New office hours for legal advice", "daysAgo": 23 },
+          { "text": "Contract review service launched", "daysAgo": 31 }
+        ],
+        "followers": 900,
+        "postsCount": 95
+      },
+      "expected": {
+        "businessType": "Professional",
+        "industry": "Legal",
+        "specialty": ["Family Law"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-009",
+      "description": "Persian family-law attorney in Tehran (Professional).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "دفتر وکالت رحیمی",
+        "bio": "وکیل پایه یک دادگستری — حقوق خانواده، طلاق و حضانت",
+        "city": "تهران",
+        "contactChannels": ["PHONE"],
+        "username": "rahimi_vakil",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "مشاوره حقوق خانواده", "daysAgo": 6 },
+          { "text": "حضانت فرزند", "daysAgo": 14 },
+          { "text": "تنظیم لایحه دفاعیه", "daysAgo": 22 }
+        ],
+        "followers": 720,
+        "postsCount": 80
+      },
+      "expected": {
+        "businessType": "Professional",
+        "industry": "Legal",
+        "specialty": ["Family Law"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-010",
+      "description": "Cosmetics manufacturer in Tehran (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "تولیدی آریا کاسمتیک",
+        "bio": "تولیدکننده محصولات آرایشی و بهداشتی — خط تولید شامپو و کرم",
+        "city": "تهران",
+        "website": "https://aria-cosmetics.example.ir",
+        "contactChannels": ["PHONE", "EMAIL"],
+        "username": "aria_cosmetics",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "خط تولید شامپو جدید", "daysAgo": 5 },
+          { "text": "عرضه به فروشگاه‌ها آغاز شد", "daysAgo": 11 },
+          { "text": "کرم مراقبت پوست تولیدی ما", "daysAgo": 19 },
+          { "text": "بسته‌بندی جدید محصولات", "daysAgo": 27 }
+        ],
+        "followers": 3200,
+        "postsCount": 210
+      },
+      "expected": {
+        "businessType": "Manufacturer",
+        "industry": "Cosmetics",
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-011",
+      "description": "English printer manufacturer in Tehran (specialty must NOT be Printer Parts).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "LOCATION", "ENGLISH", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "ParsPrint Manufacturing",
+        "bio": "Manufacturer of printers and printing equipment in Tehran. OEM printer production.",
+        "city": "Tehran",
+        "website": "https://parsprint.example.com",
+        "username": "parsprint",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "New printer model launch", "daysAgo": 3 },
+          { "text": "OEM production line", "daysAgo": 9 },
+          { "text": "Printer assembly quality control", "daysAgo": 15 },
+          { "text": "Factory tour for partners", "daysAgo": 22 },
+          { "text": "R&D on print head technology", "daysAgo": 30 }
+        ],
+        "followers": 5100,
+        "postsCount": 400
+      },
+      "expected": {
+        "businessType": "Manufacturer",
+        "industry": "Printing",
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-012",
+      "description": "Distributor of beauty products in Rasht (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "پخش آرایشی رشت",
+        "bio": "پخش کننده محصولات آرایشی و بهداشتی در رشت — توزیع به فروشگاه‌ها",
+        "city": "رشت",
+        "contactChannels": ["PHONE", "TELEGRAM"],
+        "username": "rasht_beauty_distribution",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "توزیع محصولات جدید رسید", "daysAgo": 6 },
+          { "text": "پوشش فروشگاه‌های گیلان", "daysAgo": 13 },
+          { "text": "لیست پخش ماهانه", "daysAgo": 20 },
+          { "text": "همکاری با آرایشگاه‌ها", "daysAgo": 28 }
+        ],
+        "followers": 2600,
+        "postsCount": 190
+      },
+      "expected": {
+        "businessType": "Distributor",
+        "industry": "Beauty",
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Rasht"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-013",
+      "description": "English salon equipment distributor in Tehran.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "ENGLISH", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "SalonPro Distribution",
+        "bio": "Distributor of salon equipment and furniture — Tehran & nationwide.",
+        "city": "Tehran",
+        "website": "https://salonpro.example.com",
+        "username": "salonpro_dist",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "New salon chairs in stock", "daysAgo": 5 },
+          { "text": "Distribution network expansion", "daysAgo": 12 },
+          { "text": "Salon equipment catalog", "daysAgo": 18 },
+          { "text": "Partner showroom opened", "daysAgo": 26 }
+        ],
+        "followers": 3400,
+        "postsCount": 280
+      },
+      "expected": {
+        "businessType": "Distributor",
+        "industry": "Beauty",
+        "specialty": ["Salon Equipment"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-014",
+      "description": "Inactive printer parts wholesaler in Karaj (stale content, low activity).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "INACTIVE"],
+      "locale": "fa",
+      "input": {
+        "name": "عمده فروشی قطعات پرینتر کرج",
+        "bio": "عمده فروش قطعات پرینتر",
+        "city": "کرج",
+        "username": "karaj_printer_wholesale",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "موجودی قطعات پرینتر", "daysAgo": 400 },
+          { "text": "لیست قیمت", "daysAgo": 380 }
+        ],
+        "followers": 300,
+        "postsCount": 45
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Karaj"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-015",
+      "description": "Weak evidence: name-only salon. Source data never mentions coloring (specialty expected from offline knowledge — correct system behavior is abstention).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "PERSIAN", "WEAK_EVIDENCE", "MISSING_LOCATION"],
+      "locale": "fa",
+      "input": {
+        "name": "سالن آرایش ستاره",
+        "sourceType": "INSTAGRAM"
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Hair Coloring"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": null
+      },
+      "expectedOutcome": "REJECTED"
+    },
+    {
+      "caseId": "ev-016",
+      "description": "Strong salon signals but missing location — location must stay empty (no invention).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "PERSIAN", "MISSING_LOCATION", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "سالن زیبایی مهتاب",
+        "bio": "آرایشگاه زنانه — رنگ مو و بالیاژ",
+        "username": "mahtab_salon",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "رنگ مو جدید رسید", "daysAgo": 3 },
+          { "text": "بالایاژ تخصصی", "daysAgo": 7 },
+          { "text": "کوتاهی مو", "daysAgo": 12 },
+          { "text": "رنگ و لایت", "daysAgo": 17 },
+          { "text": "مشاوره رنگ", "daysAgo": 24 }
+        ],
+        "followers": 8300,
+        "postsCount": 520
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Hair Coloring", "Balayage"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": null
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-017",
+      "description": "Ambiguous photography studio (service business, industry not representable).",
+      "tags": ["BUSINESS_TYPE", "LOCATION", "PERSIAN", "AMBIGUOUS"],
+      "locale": "fa",
+      "input": {
+        "name": "استودیو پرتره آفتاب",
+        "bio": "خدمات عکاسی و فیلم‌برداری — استودیو تخصصی پرتره",
+        "city": "شیراز",
+        "username": "aftab_studio",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "رزرو جلسه عکاسی", "daysAgo": 8 },
+          { "text": "پرتره استودیویی", "daysAgo": 16 }
+        ],
+        "followers": 1900,
+        "postsCount": 130
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": null,
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Shiraz"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-018",
+      "description": "Ambiguous hybrid: beauty services + phone repair (mixed Persian/English).",
+      "tags": ["BUSINESS_TYPE", "LOCATION", "MIXED", "AMBIGUOUS", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "TechGlam Studio",
+        "bio": "Beauty services and phone repair — سالن زیبایی و تعمیرات موبایل",
+        "city": "Tehran",
+        "username": "techglam_studio",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "Hair coloring appointments open", "daysAgo": 5 },
+          { "text": "Phone screen repair same day", "daysAgo": 12 },
+          { "text": "بالایاژ و رنگ مو", "daysAgo": 19 }
+        ],
+        "followers": 2400,
+        "postsCount": 160
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": null,
+        "specialty": ["Hair Coloring", "Balayage"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-019",
+      "description": "Noisy audience: large following, irrelevant content, very few posts.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "NOISY_AUDIENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "پرینتر یدکی تهران",
+        "bio": "عمده فروش قطعات پرینتر در تهران",
+        "city": "تهران",
+        "username": "printer_yadaki",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "فالو بک", "daysAgo": 10 },
+          { "text": "تبلیغات کانال", "daysAgo": 25 }
+        ],
+        "followers": 85000,
+        "postsCount": 2
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-020",
+      "description": "English bulk beauty supply with spammy audience signals and stale posts.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "ENGLISH", "NOISY_AUDIENCE", "INACTIVE"],
+      "locale": "en",
+      "input": {
+        "name": "Bulk Beauty Supply",
+        "bio": "Wholesale beauty products — hair care and salon supplies",
+        "city": "Shiraz",
+        "username": "bulk_beauty_supply",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "giveaway! follow follow follow", "daysAgo": 150 },
+          { "text": "DM for cheap followers", "daysAgo": 300 }
+        ],
+        "followers": 120000,
+        "postsCount": 900
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Beauty",
+        "specialty": ["Hair Care Products"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Shiraz"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-021",
+      "description": "Dark-hair balayage specialist in Tehran (sub-specialty; both Persian spellings of balayage).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "SUB_SPECIALTY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "مژی بالیاژ",
+        "bio": "تخصص بالیاژ موی مشکی و دکلره",
+        "city": "تهران",
+        "username": "mazhi_balayage",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "بالایاژ روی پایه مشکی", "daysAgo": 3 },
+          { "text": "دکلره و دامیه", "daysAgo": 8 },
+          { "text": "رنگ و لایت مو", "daysAgo": 13 }
+        ],
+        "followers": 6400,
+        "postsCount": 300
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Hair Coloring", "Balayage"],
+        "subSpecialty": ["Balayage on Dark Hair"],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-022",
+      "description": "Nail salon in Mashhad with ZWNJ in name (rules arm covers via alias; keyword provider misses business type).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "ZWNJ", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "استودیو ناخن‌کار",
+        "bio": "سالن ناخن تخصصی — کاشت و طراحی ناخن",
+        "city": "مشهد",
+        "username": "nailkar_studio",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "کاشت ناخن جدید", "daysAgo": 4 },
+          { "text": "طراحی ناخن", "daysAgo": 9 },
+          { "text": "لیک ژل", "daysAgo": 15 }
+        ],
+        "followers": 5100,
+        "postsCount": 260
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Nail Art"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Mashhad"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-023",
+      "description": "Arabic-variant Persian salon (صالون/طهران/صبغة) — normalization probe.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "ARABIC_VARIANTS", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "صالون الياقوت",
+        "bio": "صالون تجميل در طهران — صبغة الشعر و بالياژ",
+        "city": "طهران",
+        "username": "yalghout_salon",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "صبغة الشعر بدون آمونياك", "daysAgo": 5 },
+          { "text": "بالياژ تخصصي", "daysAgo": 12 },
+          { "text": "حجز موعد", "daysAgo": 20 }
+        ],
+        "followers": 3900,
+        "postsCount": 220
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Hair Coloring", "Balayage"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-024",
+      "description": "English toner wholesale in Tabriz (multi-brand: Canon, Xerox, Ricoh).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "BRAND", "LOCATION", "ENGLISH", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "Tabriz Toner Wholesale",
+        "bio": "Wholesale printer toner and cartridges in Tabriz. Canon, Xerox, Ricoh stock.",
+        "city": "Tabriz",
+        "contactChannels": ["PHONE", "WHATSAPP"],
+        "username": "tabriz_toner",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "Canon toner wholesale pallets", "daysAgo": 6 },
+          { "text": "Xerox drums available", "daysAgo": 14 },
+          { "text": "Ricoh cartridges bulk", "daysAgo": 21 },
+          { "text": "Wholesale price list Q3", "daysAgo": 29 }
+        ],
+        "followers": 2900,
+        "postsCount": 240
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": ["Canon", "Xerox", "Ricoh"],
+        "location": "Tabriz"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-025",
+      "description": "Weak Persian hair-care retail in Isfahan (one stale post).",
+      "tags": ["BUSINESS_TYPE", "SPECIALTY", "LOCATION", "PERSIAN", "WEAK_EVIDENCE", "INACTIVE"],
+      "locale": "fa",
+      "input": {
+        "name": "فروشگاه محصولات مو",
+        "bio": "فروش شامپو و محصولات مراقبت مو",
+        "city": "اصفهان",
+        "username": "mahsoolat_mo",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "شامپو تخصصی ضدریزش", "daysAgo": 35 }
+        ],
+        "followers": 180,
+        "postsCount": 12
+      },
+      "expected": {
+        "businessType": "Retailer",
+        "industry": "Beauty",
+        "specialty": ["Hair Care Products"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Isfahan"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-026",
+      "description": "Strong English hair studio in Isfahan with sub-specialty in content.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "SUB_SPECIALTY", "LOCATION", "ENGLISH", "STRONG_EVIDENCE"],
+      "locale": "en",
+      "input": {
+        "name": "Elite Hair Studio Isfahan",
+        "bio": "Hair salon in Isfahan — balayage, hair coloring, keratin treatments",
+        "city": "Isfahan",
+        "website": "https://elitehair-isfahan.example.com",
+        "contactChannels": ["PHONE", "INSTAGRAM_DM"],
+        "username": "elite_hair_isfahan",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "Balayage on dark hair portfolio", "daysAgo": 2 },
+          { "text": "Hair coloring trends", "daysAgo": 7 },
+          { "text": "Keratin treatment results", "daysAgo": 13 },
+          { "text": "Balayage consultation", "daysAgo": 19 },
+          { "text": "New color line", "daysAgo": 26 },
+          { "text": "Hair spa services", "daysAgo": 33 }
+        ],
+        "followers": 12000,
+        "postsCount": 800
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Hair Coloring", "Balayage"],
+        "subSpecialty": ["Balayage on Dark Hair"],
+        "brand": [],
+        "location": "Isfahan"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-027",
+      "description": "Weak, near-inactive Persian salon in Tabriz.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "LOCATION", "PERSIAN", "WEAK_EVIDENCE", "INACTIVE"],
+      "locale": "fa",
+      "input": {
+        "name": "آرایشگاه مریم",
+        "bio": "آرایشگاه زنانه",
+        "city": "تبریز",
+        "username": "maryam_beauty",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "تعطیلات", "daysAgo": 220 }
+        ],
+        "followers": 40,
+        "postsCount": 3
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tabriz"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-028",
+      "description": "Junk/spam account with no classifiable business signals (outcome label only).",
+      "tags": ["PERSIAN", "NOISY_AUDIENCE", "WEAK_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "کانال تبلیغاتی",
+        "bio": "تبلیغات و فالوور ارزان",
+        "username": "tabligh_channel",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "فالوور ارزان", "daysAgo": 5 },
+          { "text": "تبلیغ کانال شما", "daysAgo": 12 }
+        ],
+        "followers": 99000,
+        "postsCount": 700
+      },
+      "expected": {
+        "businessType": null,
+        "industry": null,
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": null
+      },
+      "expectedOutcome": "REJECTED"
+    },
+    {
+      "caseId": "ev-029",
+      "description": "Wholesaler/distributor of salon equipment in Tehran (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "تجهیزات سالن آرایشی پارس",
+        "bio": "عمده فروش و پخش تجهیزات سالن آرایشی — صندلی و دستگاه",
+        "city": "تهران",
+        "website": "https://pars-salon-equipment.example.ir",
+        "username": "pars_salon_equipment",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "صندلی آرایشگاه جدید", "daysAgo": 4 },
+          { "text": "دستگاه اولتراسونیک سالن", "daysAgo": 11 },
+          { "text": "تجهیزات سالن موجود", "daysAgo": 18 },
+          { "text": "پخش کشوری تجهیزات", "daysAgo": 26 }
+        ],
+        "followers": 4700,
+        "postsCount": 330
+      },
+      "expected": {
+        "businessType": "Wholesaler",
+        "industry": "Beauty",
+        "specialty": ["Salon Equipment"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-030",
+      "description": "Skin-care clinic in Tehran (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "کلینیک پوست نگار",
+        "bio": "مراقبت پوست و پاکسازی — خدمات تخصصی پوست",
+        "city": "تهران",
+        "username": "negar_skin",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "پاکسازی پوست", "daysAgo": 5 },
+          { "text": "میکرودرم", "daysAgo": 12 },
+          { "text": "مراقبت پوست زمستانی", "daysAgo": 20 }
+        ],
+        "followers": 6100,
+        "postsCount": 290
+      },
+      "expected": {
+        "businessType": "Service Provider",
+        "industry": "Beauty",
+        "specialty": ["Skin Care"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-031",
+      "description": "Persian manufacturer of printer spare parts in Tehran.",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "تولید قطعات پرینتر پارس",
+        "bio": "تولیدی قطعات پرینتر — تولید قطعات یدکی دستگاه چاپ",
+        "city": "تهران",
+        "website": "https://pars-printer-parts.example.ir",
+        "username": "pars_printer_mfg",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "قطعات جدید تولید شد", "daysAgo": 7 },
+          { "text": "خط تولید قطعات پرینتر", "daysAgo": 15 },
+          { "text": "کنترل کیفیت قطعات", "daysAgo": 23 }
+        ],
+        "followers": 2200,
+        "postsCount": 150
+      },
+      "expected": {
+        "businessType": "Manufacturer",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-032",
+      "description": "Distributor of printing supplies and parts in Ahvaz (Persian).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "LOCATION", "PERSIAN", "STRONG_EVIDENCE"],
+      "locale": "fa",
+      "input": {
+        "name": "پخش مواد چاپ اهواز",
+        "bio": "پخش کننده مواد چاپ و قطعات دستگاه چاپ در اهواز",
+        "city": "اهواز",
+        "contactChannels": ["PHONE"],
+        "username": "ahvaz_print_distribution",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "مواد چاپ موجود", "daysAgo": 6 },
+          { "text": "قطعات دستگاه چاپ", "daysAgo": 13 },
+          { "text": "پخش استانی", "daysAgo": 21 }
+        ],
+        "followers": 1400,
+        "postsCount": 110
+      },
+      "expected": {
+        "businessType": "Distributor",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Ahvaz"
+      },
+      "expectedOutcome": "QUALIFIED"
+    },
+    {
+      "caseId": "ev-033",
+      "description": "Ambiguous trading group (import + distribution) in Tehran.",
+      "tags": ["BUSINESS_TYPE", "LOCATION", "PERSIAN", "AMBIGUOUS"],
+      "locale": "fa",
+      "input": {
+        "name": "گروه تجاری آسمان",
+        "bio": "واردات و توزیع کالا — بازار تهران",
+        "city": "تهران",
+        "username": "aseman_trading",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "واردات محموله جدید", "daysAgo": 9 },
+          { "text": "توزیع سراسری", "daysAgo": 18 }
+        ],
+        "followers": 1100,
+        "postsCount": 90
+      },
+      "expected": {
+        "businessType": "Distributor",
+        "industry": null,
+        "specialty": [],
+        "subSpecialty": [],
+        "brand": [],
+        "location": "Tehran"
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    },
+    {
+      "caseId": "ev-034",
+      "description": "English printer supplies reseller with no location anywhere (missing location probe).",
+      "tags": ["BUSINESS_TYPE", "INDUSTRY", "SPECIALTY", "BRAND", "ENGLISH", "WEAK_EVIDENCE", "MISSING_LOCATION"],
+      "locale": "en",
+      "input": {
+        "name": "PrintMart",
+        "bio": "Retail printer supplies and parts",
+        "username": "printmart",
+        "sourceType": "INSTAGRAM",
+        "posts": [
+          { "text": "HP toner in stock", "daysAgo": 40 },
+          { "text": "Epson parts", "daysAgo": 60 }
+        ],
+        "followers": 350,
+        "postsCount": 55
+      },
+      "expected": {
+        "businessType": "Retailer",
+        "industry": "Printing",
+        "specialty": ["Printer Parts"],
+        "subSpecialty": [],
+        "brand": ["HP", "Epson"],
+        "location": null
+      },
+      "expectedOutcome": "REVIEW_REQUIRED"
+    }
+  ]
+}

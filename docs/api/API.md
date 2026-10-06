@@ -602,3 +602,36 @@ Worker side executes the REAL pipeline: connector → raw snapshot
 (immutable, content-hash dedup) → Persian-aware normalization → dedup/ER →
 lead → `ANALYSIS_PENDING`. Failures are honest: `NOT_CONFIGURED` (missing
 credentials), `BAD_REQUEST` (malformed payload), `WORKER_ERROR`.
+
+---
+
+# 9. Evaluation (Phase 17, ADR-029)
+
+Read-side only (plus correction recording). All responses are structured —
+per-case outcomes, scores and error categories — never chain-of-thought.
+
+- `GET /evaluation/runs?limit=` — recent runs: deterministic `runId`,
+  `versions` (dataset/provider/model/prompt/schema/taxonomy/policy), `arm`,
+  `armStatus` (EXECUTED | NOT_CONFIGURED | FAILED), full `metrics` block
+  (overall, byDimension, macroF1, calibration, latency, cost, errors,
+  abstention/coverage, outcomeAccuracy, byTag, scoreEvaluation).
+- `GET /evaluation/runs/{runId}` — one run + per-case results
+  (`exactMatch`, `dimensionAccuracy`, `errorCategory`, reviewOutcome,
+  latency, tokens, detail with per-dimension outcomes).
+- `GET /evaluation/runs/{runId}/regression` — per-metric findings vs the
+  resolved baseline (same arm + dataset version): `CRITICAL` ≥ 0.10,
+  `MAJOR` ≥ 0.05, `MINOR` > 0.02; `hasRegressions` is the release gate;
+  404 when no baseline exists yet.
+- `GET /evaluation/corrections?datasetVersion=` — human corrections
+  (append-only; never part of AI output).
+- `POST /evaluation/corrections` — record a correction
+  (`caseId`, `datasetVersion`, `field` ∈ businessType/industry/specialty/
+  subSpecialty/brand/location/outcome/score, `correctedValue`, optional
+  `reviewerNote`). Duplicate (case, field, reviewer, dataset) → 409-style
+  unique violation.
+- `GET /evaluation/feedback-dataset?datasetVersion=` — draft of the next
+  labeled dataset with corrections applied (`<minor+1>.0-draft`); requires
+  human review before becoming a dataset version.
+
+CLI: `pnpm eval` (baseline comparison + release gate). Live provider:
+`ULIP_EVAL_LIVE=1` + `AI_PROVIDER=http` — never default, never in tests.

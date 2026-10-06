@@ -1,5 +1,14 @@
 # AI Evaluation and Benchmarking
 
+> **Status (Phase 17, ADR-029): implemented.** The framework lives in
+> `blueprint/packages/eval` (`@ulip/eval`). Dataset:
+> `packages/eval/dataset/eval-dataset-v1.json` (v1.0.0, 34 human-labeled
+> cases). Command: `pnpm eval` (baseline comparison + release gate;
+> `ULIP_EVAL_LIVE=1` opts into the configured HTTP provider). Read API:
+> `GET /evaluation/runs[/{runId}[/regression]]`, `/evaluation/corrections`,
+> `/evaluation/feedback-dataset`. The protocol below is now enforced by code,
+> not by convention.
+
 ## 1. Benchmark principle
 
 Do not assume that LLM-only, Jev-only or cascaded inference is universally best. Benchmark the actual business tasks on a human-labeled dataset.
@@ -67,5 +76,11 @@ Record whether a failure came from:
 ## 7. Release gate
 
 A new model/routing policy should not become default solely because overall accuracy improved. Examine regressions on high-value categories, cost, review burden and calibration.
+
+In Phase 17 this is mechanical: `pnpm eval` compares every run against the
+committed baseline per metric path (`overall.*`, `byDimension.*`, `byTag.*`,
+calibration, abstention, latency). CRITICAL (≥0.10) or MAJOR (≥0.05)
+degradations fail the gate; MINOR (>0.02) degradations are reported. Jev arms
+are recorded `NOT_CONFIGURED` until a real DecisionProvider exists.
 
 **Jev-specific rule (ADR-017):** Jev must not be described or promoted as accuracy-improving until a measured benchmark shows it beats the LLM-only arm on the frozen dataset at acceptable cost and review rate.

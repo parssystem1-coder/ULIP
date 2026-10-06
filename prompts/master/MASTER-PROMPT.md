@@ -319,12 +319,16 @@ documentation, and definition of done.
 | 14 | Runtime Foundation (API + worker + persistent jobs) | — (implemented, see IMPLEMENTATION-PLAN §Phase 14) |
 | 15 | Real Discovery & First Source Integration (ADR-027) | PHASE-15-REAL-DISCOVERY.md |
 | 16 | AI Analysis & Scoring Runtime (ADR-028) | PHASE-16-AI-ANALYSIS-SCORING.md |
+| 17 | AI Evaluation, Calibration & Regression (ADR-029) | PHASE-17-EVALUATION-CALIBRATION-REGRESSION.md |
 
 Execution order is exactly the table order. The Analysis Orchestrator (ADR-016) is
 introduced in Phase 02 (persistent `jobs`/`job_attempts`/`job_events` + lead
 lifecycle states) and extended as processing stages land in Phases 05–09;
 Phase 16 connects it to the live AI runtime so `ANALYSIS_PENDING` leads reach
 `SCORED` → `QUALIFIED | REVIEW_REQUIRED | REJECTED` through the worker.
+Phase 17 closes the loop with `pnpm eval`: human-labeled dataset → per-dimension
+metrics → calibration → per-category regression gate against committed
+baselines (ADR-029).
 
 
 # 7. DEFINITION OF DONE

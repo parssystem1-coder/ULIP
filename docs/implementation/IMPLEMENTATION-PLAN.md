@@ -138,6 +138,20 @@ Resolution (identity keys) → Lead creation/update → ANALYSIS_PENDING
   Instagram status: configured-but-unimplemented boundary, NOT_CONFIGURED
   without credentials, UNSUPPORTED capability — honest, per ADR-027.
 
+## Phase 17 — AI Evaluation, Calibration & Regression Framework (implemented)
+
+The platform now measures classification/scoring quality instead of assuming
+it (ADR-029): a 34-case human-labeled dataset (v1.0.0) frozen against the
+seed taxonomy; the `@ulip/eval` runner executing RULES_ONLY / LLM_ONLY /
+RULES_THEN_LLM through the real evidence pipeline (Jev arms honest
+NOT_CONFIGURED); per-dimension accuracy/precision/recall/F1 + confusion
+matrix, calibration (ECE, over-confidence), score diagnostics (separation,
+zero-share, correlation), the nine-category error taxonomy; append-only
+evaluation tables (0004) with human corrections and a feedback-dataset
+export; `pnpm eval` comparing every run against committed baselines with a
+CRITICAL/MAJOR regression release gate; read-side `/evaluation/*` API.
+Live-provider evaluation is explicitly gated (`ULIP_EVAL_LIVE=1`).
+
 ## Phase 16 — AI Analysis & Scoring Runtime (implemented)
 
 The AI contracts are now connected to the real pipeline (ADR-028):

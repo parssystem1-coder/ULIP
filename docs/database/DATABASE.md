@@ -628,3 +628,31 @@ scoring_version
 ```
 
 ثبت شود.
+
+---
+
+# 29. AI Evaluation (migration 0004, Phase 17, ADR-029)
+
+```text
+evaluation_runs            deterministic run id = uuid5(tenant, dataset_version,
+                           arm, provider, model, prompt_version, schema_version,
+                           taxonomy_version, scoring_policy_version)
+evaluation_case_results    per-case rows (exact_match, dimension_accuracy,
+                           mean_confidence, error_category, outcome,
+                           latency_ms, tokens, detail JSONB)
+evaluation_corrections     human corrections, append-only
+                           (tenant_id, dataset_version, case_id, field,
+                            reviewer_id) UNIQUE NULLS NOT DISTINCT
+```
+
+- All three tables are **tenant-scoped**; runs/case-results are
+  **append-only** (trigger `ulip_reject_evaluation_mutation` rejects
+  UPDATE/DELETE — a mutable measurement is worthless as a baseline).
+- `ai_runs` is NOT duplicated: an evaluation run is a measurement over a
+  frozen dataset, not a per-lead provider call.
+- Re-running the same evaluation converges on the same row
+  (`uniq_evaluation_runs_identity` + deterministic id) instead of duplicating.
+- Corrections never overwrite AI output; reviewer disagreement is another row
+  (NULLS NOT DISTINCT keeps anonymous corrections unique too).
+- Re-apply note: 0004 was re-applied on the dev database after switching the
+  corrections unique constraint to `NULLS NOT DISTINCT` (PG 15+).

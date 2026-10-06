@@ -4,6 +4,7 @@
  */
 
 import { ConnectorRegistry, ConfiguredHttpApiConnectorFactory, DeterministicFakeConnectorFactory } from '@ulip/discovery';
+import { DbEvalStore } from '@ulip/eval';
 import { DbOrchestrator } from '@ulip/orchestration';
 import { Database, JobQueue, loadEnv, Logger, type Env } from '@ulip/runtime';
 import {
@@ -30,6 +31,8 @@ export interface AppContext {
   jobs: JobRepository;
   /** Read side of the AI analysis runtime (Phase 16). */
   analysis: AnalysisRepository;
+  /** Evaluation read side + corrections (Phase 17, ADR-029). */
+  evaluation: DbEvalStore;
   /** The ONLY writer of leads.status (ADR-016). */
   orchestrator: DbOrchestrator;
   /** Redis/BullMQ transport for persistent jobs (transport ONLY, ADR-016). */
@@ -61,6 +64,7 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
     campaigns: new CampaignRepository(db),
     jobs: new JobRepository(db),
     analysis: new AnalysisRepository(db),
+    evaluation: new DbEvalStore(db),
     orchestrator: new DbOrchestrator({
       db,
       enqueue: async (jobId: string) => {

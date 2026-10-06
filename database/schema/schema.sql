@@ -958,6 +958,112 @@ CREATE TABLE suppression_entries (
 
 CREATE INDEX idx_suppression_lookup ON suppression_entries (tenant_id, scope, lead_id, business_id);
 
+-- =====================================================================
+-- EVALUATION (migration 0004, ADR-029) — immutable, versioned measurement
+-- over a frozen human-labeled dataset. Append-only: triggers reject UPDATE
+-- and DELETE so a regression baseline can never be rewritten after the fact.
+-- =====================================================================
+CREATE TABLE evaluation_runs (
+  id                     UUID PRIMARY KEY,
+  tenant_id              UUID NOT NULL REFERENCES tenants(id),
+  dataset_version        TEXT NOT NULL,
+  arm                    TEXT NOT NULL CHECK (arm IN (
+                           'RULES_ONLY', 'LLM_ONLY', 'RULES_THEN_LLM',
+                           'LLM_THEN_DECISION_PROVIDER', 'RULES_LLM_DECISION_PROVIDER')),
+  arm_status             TEXT NOT NULL CHECK (arm_status IN ('EXECUTED', 'NOT_CONFIGURED', 'FAILED')),
+  arm_reason             TEXT,
+  provider               TEXT NOT NULL,
+  model                  TEXT NOT NULL,
+  prompt_version         TEXT NOT NULL,
+  schema_version         TEXT NOT NULL,
+  taxonomy_version       INTEGER NOT NULL,
+  scoring_policy_version TEXT NOT NULL,
+  started_at             TIMESTAMPTZ NOT NULL,
+  finished_at            TIMESTAMPTZ NOT NULL,
+  total_cases            INTEGER NOT NULL DEFAULT 0,
+  metrics                JSONB NOT NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT evaluation_runs_versions_nonempty CHECK (
+    dataset_version <> '' AND provider <> '' AND model <> '' AND
+    prompt_version <> '' AND schema_version <> '' AND scoring_policy_version <> ''
+  )
+);
+
+CREATE UNIQUE INDEX uniq_evaluation_runs_identity
+  ON evaluation_runs (tenant_id, dataset_version, arm, provider, model,
+                      prompt_version, schema_version, taxonomy_version,
+                      scoring_policy_version);
+
+CREATE INDEX idx_evaluation_runs_tenant_created
+  ON evaluation_runs (tenant_id, created_at DESC);
+
+CREATE TABLE evaluation_case_results (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id             UUID NOT NULL REFERENCES evaluation_runs(id) ON DELETE CASCADE,
+  tenant_id          UUID NOT NULL REFERENCES tenants(id),
+  case_id            TEXT NOT NULL,
+  exact_match        BOOLEAN NOT NULL,
+  dimension_accuracy NUMERIC(5,4) NOT NULL,
+  mean_confidence    NUMERIC(5,4),
+  error_category     TEXT CHECK (error_category IN (
+                       'SOURCE_DATA_MISSING', 'NORMALIZATION_ERROR', 'TAXONOMY_MISMATCH',
+                       'MODEL_MISUNDERSTANDING', 'GROUNDING_FAILURE', 'THRESHOLD_ERROR',
+                       'SCORING_ERROR', 'HUMAN_LABEL_DISAGREEMENT', 'OTHER')),
+  outcome            TEXT,
+  outcome_expected   TEXT,
+  outcome_correct     BOOLEAN,
+  latency_ms         INTEGER NOT NULL DEFAULT 0,
+  tokens_input       INTEGER,
+  tokens_output      INTEGER,
+  estimated_cost     NUMERIC(14,6),
+  detail             JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uniq_evaluation_case UNIQUE (run_id, case_id)
+);
+
+CREATE INDEX idx_evaluation_case_results_tenant
+  ON evaluation_case_results (tenant_id, run_id);
+
+CREATE TABLE evaluation_corrections (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id),
+  run_id          UUID REFERENCES evaluation_runs(id) ON DELETE CASCADE,
+  case_id         TEXT NOT NULL,
+  dataset_version TEXT NOT NULL,
+  field           TEXT NOT NULL CHECK (field IN (
+                    'businessType', 'industry', 'specialty', 'subSpecialty',
+                    'brand', 'location', 'outcome', 'score')),
+  original_value  JSONB,
+  corrected_value JSONB NOT NULL,
+  reviewer_id     UUID REFERENCES users(id),
+  reviewer_note   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uniq_evaluation_correction
+    UNIQUE NULLS NOT DISTINCT (tenant_id, dataset_version, case_id, field, reviewer_id)
+);
+
+CREATE INDEX idx_evaluation_corrections_tenant
+  ON evaluation_corrections (tenant_id, dataset_version, created_at DESC);
+
+-- Append-only enforcement (evaluation history must stay trustworthy).
+CREATE OR REPLACE FUNCTION ulip_reject_evaluation_mutation() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'evaluation tables are append-only (historical measurements are immutable)';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_evaluation_runs_immutable
+  BEFORE UPDATE OR DELETE ON evaluation_runs
+  FOR EACH ROW EXECUTE FUNCTION ulip_reject_evaluation_mutation();
+
+CREATE TRIGGER trg_evaluation_case_results_immutable
+  BEFORE UPDATE OR DELETE ON evaluation_case_results
+  FOR EACH ROW EXECUTE FUNCTION ulip_reject_evaluation_mutation();
+
+CREATE TRIGGER trg_evaluation_corrections_immutable
+  BEFORE UPDATE ON evaluation_corrections
+  FOR EACH ROW EXECUTE FUNCTION ulip_reject_evaluation_mutation();
+
 COMMIT;
 
 -- =====================================================================

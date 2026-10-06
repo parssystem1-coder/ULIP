@@ -78,3 +78,14 @@ five persisted score dimensions on versioned policies; versioned analyses
 with single-current semantics; structured explainability through
 `GET /leads/{id}/analysis`. Jev remains unplugged; vision/embedding slots are
 optional and unconfigured by default. See ADR-028.
+
+## Phase 17 — AI Evaluation, Calibration & Regression Framework (shipped)
+
+Quality is now measured, not assumed (ADR-029): a versioned human-labeled
+dataset (34 cases, frozen taxonomy), the `@ulip/eval` runner over the real
+evidence pipeline, per-dimension classification metrics, confidence
+calibration, score diagnostics, a nine-category error taxonomy, append-only
+evaluation history with human corrections and feedback-dataset export, and
+`pnpm eval` — a deterministic regression command with committed baselines and
+a per-category release gate. Jev arms stay honestly NOT_CONFIGURED.
+See ADR-029 and docs/ai/EVALUATION-AND-BENCHMARKING.md.

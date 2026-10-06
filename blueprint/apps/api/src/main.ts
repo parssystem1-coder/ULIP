@@ -16,7 +16,11 @@ import {
   createLead,
   createSource,
   createTaxonomy,
+  addEvaluationCorrection,
+  exportEvaluationFeedbackDataset,
   getDiscoveryJob,
+  getEvaluationRun,
+  getEvaluationRunRegression,
   getJob,
   getLead,
   getLeadAnalysis,
@@ -24,6 +28,8 @@ import {
   getLeadScores,
   healthHandler,
   listCampaigns,
+  listEvaluationCorrections,
+  listEvaluationRuns,
   listJobs,
   listLeads,
   listSources,
@@ -73,6 +79,14 @@ export async function createApiServer(app: AppContext): Promise<Server> {
   // discovery (Phase 15, ADR-027) — OPENAPI.yaml /discovery/*
   router.add('POST', '/discovery/search', createDiscovery(app));
   router.add('GET', '/discovery/jobs/:jobId', getDiscoveryJob(app));
+
+  // evaluation (Phase 17, ADR-029) — OPENAPI.yaml /evaluation/*
+  router.add('GET', '/evaluation/runs', listEvaluationRuns(app));
+  router.add('GET', '/evaluation/runs/:runId', getEvaluationRun(app));
+  router.add('GET', '/evaluation/runs/:runId/regression', getEvaluationRunRegression(app));
+  router.add('GET', '/evaluation/corrections', listEvaluationCorrections(app));
+  router.add('POST', '/evaluation/corrections', addEvaluationCorrection(app));
+  router.add('GET', '/evaluation/feedback-dataset', exportEvaluationFeedbackDataset(app));
 
   const handle = pipeline(app, router);
 

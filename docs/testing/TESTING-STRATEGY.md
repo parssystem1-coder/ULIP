@@ -73,3 +73,19 @@ separately against authorized sandboxes.
 | real PostgreSQL: persistence, current-record, tenant isolation, transitions | `@ulip/analysis` — integration.analysis-db tests (skip-honest without Postgres) |
 | API endpoints + auth/tenant boundary + E2E through the real worker | `apps/api` — integration.analysis tests (opt-in: `ULIP_IT_WORKER=1`) |
 | external AI provider | opt-in only, when real credentials are configured (never in CI default) |
+
+## AI Evaluation test matrix (ADR-029, PHASE-17)
+
+| Area | Covered by |
+| --- | --- |
+| dataset validation (human provenance, unique ids, canonical labels) | `@ulip/eval` — dataset tests (committed dataset re-validated on every run) |
+| accuracy/precision/recall/F1, confusion matrix, abstention/coverage | `@ulip/eval` — metrics tests (hand-computable fixtures) |
+| calibration buckets/ECE/over-confidence, score separation/correlation | `@ulip/eval` — metrics + runner tests |
+| regression detection (direction-aware, CRITICAL/MAJOR/MINOR, version flag) | `@ulip/eval` — regression tests |
+| error taxonomy (9 categories, TAXONOMY_MISMATCH refinement) | `@ulip/eval` — metrics tests |
+| fake-provider evaluation + deterministic repeatability (same runId) | `@ulip/eval` — runner tests |
+| mocked HTTP provider (injected fetch, no network) | `@ulip/eval` — runner tests |
+| unavailable-provider handling (LLM + Jev arms NOT_CONFIGURED, never fabricated) | `@ulip/eval` — runner tests |
+| version tracking (policy/prompt tuple → new runId) | `@ulip/eval` — runner tests |
+| real PostgreSQL: run persistence, idempotent replay, append-only triggers, corrections uniqueness, tenant isolation, feedback export | `@ulip/eval` — integration.eval-db tests (skip-honest without `ULIP_PG_URL`) |
+| live provider evaluation | CLI-only via `ULIP_EVAL_LIVE=1` + configured HTTP provider (never in tests/CI) |

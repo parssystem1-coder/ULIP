@@ -73,6 +73,18 @@ Implementation: `blueprint/packages/ai/src/*` (contracts unchanged).
 - **Optional slots** — `HttpVisionProvider` / `HttpEmbeddingProvider` exist but
   stay `null` unless their model is configured; `DecisionProvider` (Jev) stays
   optional and is never required (ADR-017).
+
+## 10. Evaluation (Phase 17)
+
+`@ulip/eval` measures the runtime instead of assuming quality (ADR-029):
+human-labeled dataset v1.0.0 (34 cases, frozen taxonomy snapshot), five arms
+(Jev arms honest NOT_CONFIGURED), per-dimension accuracy/precision/recall/F1,
+calibration (ECE, over-confidence), score diagnostics, a nine-category error
+taxonomy, deterministic run ids, append-only history with human corrections,
+and `pnpm eval` — a per-category regression gate against committed baselines.
+LLM providers under test are always the same `LLMProvider` implementations
+from this package (deterministic fake by default; live HTTP only via
+`ULIP_EVAL_LIVE=1`).
 - **Deterministic fake** — `DeterministicFakeLlmProvider` for tests and local
   E2E only: fixed keyword dictionaries, constant confidences, stable ordering.
   It requires `AI_PROVIDER=fake` and is refused when `NODE_ENV=production`
