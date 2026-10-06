@@ -30,3 +30,23 @@ Given a temporary AI provider failure, the job records failure and follows confi
 ## E2E-005 Cross-tenant isolation
 
 A user from Tenant A cannot read, edit, export or add a Tenant B lead to a campaign even if they know the internal ID.
+
+## E2E-006 Discovery to qualified lead (PHASE-16, automated)
+
+Discovery produces leads in `ANALYSIS_PENDING`; the real worker picks up the
+persistent `ANALYSIS` job and runs the AI analysis runtime.
+
+Assertions:
+
+- lifecycle `ANALYSIS_PENDING → ANALYZING → SCORED → QUALIFIED | REVIEW_REQUIRED | REJECTED`
+- evidence rows exist before the analysis row becomes current
+- all five score dimensions persisted with the scoring policy version
+- exactly one current analysis and one current score row; history superseded, never deleted
+- a reprocess creates a NEW analysis version instead of overwriting
+- `GET /leads/{id}/analysis|evidence|scores` are tenant-scoped and authenticated
+- the fake provider is labelled `fake` — never presented as a real model
+- NOT_CONFIGURED fails honestly (no fabricated analysis)
+- a foreign tenant gets 404 for every read and cannot trigger reprocess
+
+Automated in `apps/api/test/integration.analysis.test.ts` and
+`packages/analysis/test/integration.analysis-db.test.ts`.

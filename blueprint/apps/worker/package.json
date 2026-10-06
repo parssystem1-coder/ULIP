@@ -10,7 +10,10 @@
     "dev": "tsx src/main.ts"
   },
   "dependencies": {
+    "@ulip/ai": "workspace:*",
+    "@ulip/analysis": "workspace:*",
     "@ulip/discovery": "workspace:*",
+    "@ulip/orchestration": "workspace:*",
     "@ulip/runtime": "workspace:*",
     "bullmq": "^5.34.0",
     "ioredis": "^5.4.1",

@@ -66,3 +66,15 @@ lead → ANALYSIS_PENDING) behind authorized-connector boundaries. First
 adapter: configured HTTP-API/Instagram boundary (honest NOT_CONFIGURED /
 UNSUPPORTED) + deterministic fake provider for local E2E. Jev remains
 unplugged; analysis classification hints are RULE-sourced, AI layers next.
+
+## Phase 16 — AI Analysis & Scoring Runtime (shipped)
+
+The AI layer is live: ANALYSIS_PENDING leads are processed by the real worker
+through ANALYZING → evidence → AI extraction → taxonomy mapping → policy
+scoring → SCORED → QUALIFIED / REVIEW_REQUIRED / REJECTED. Configurable
+OpenAI-compatible HTTP LLM adapter (provider-agnostic, honest NOT_CONFIGURED
+state) + deterministic test-only fake provider; evidence-first validation;
+five persisted score dimensions on versioned policies; versioned analyses
+with single-current semantics; structured explainability through
+`GET /leads/{id}/analysis`. Jev remains unplugged; vision/embedding slots are
+optional and unconfigured by default. See ADR-028.

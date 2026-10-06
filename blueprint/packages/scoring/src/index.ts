@@ -1,2 +1,2 @@
-export * from './contracts.js';
-export * from './policy-resolver.js';
+export * from './contracts.ts';
+export * from './policy-resolver.ts';

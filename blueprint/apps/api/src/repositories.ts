@@ -409,3 +409,170 @@ export class JobRepository {
     );
   }
 }
+
+// ---------------------------------------------------------------- analysis (Phase 16)
+
+export interface LeadDetailRow {
+  id: string;
+  tenant_id: string;
+  business_id: string;
+  status: string;
+  created_at: string;
+}
+
+export interface AnalysisRow {
+  id: string;
+  lead_id: string;
+  analysis_version: string;
+  model_version: string | null;
+  prompt_version: string | null;
+  schema_version: string | null;
+  taxonomy_version: number;
+  analysis_mode: string;
+  summary: string | null;
+  structured_output: Record<string, unknown>;
+  confidence: number | null;
+  is_current: boolean;
+  superseded_at: string | null;
+  created_at: string;
+}
+
+export interface EvidenceRow {
+  id: string;
+  analysis_id: string | null;
+  evidence_type: string;
+  source_type: string;
+  source_reference: string;
+  content: string | null;
+  content_hash: string;
+  retrieved_at: string;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface ScoreRow {
+  id: string;
+  scoring_policy_version_id: string;
+  relevance_score: number;
+  audience_quality_score: number;
+  activity_score: number;
+  confidence_score: number;
+  priority_score: number;
+  is_current: boolean;
+  created_at: string;
+}
+
+/** Read side of the analysis runtime (tenant-scoped, current-version aware). */
+export class AnalysisRepository {
+  private readonly db: Database;
+
+  constructor(db: Database) {
+    this.db = db;
+  }
+
+  async findLead(tenantId: string, leadId: string): Promise<LeadDetailRow | null> {
+    const r = await this.db.query<LeadDetailRow>(
+      'SELECT id, tenant_id, business_id, status::text AS status, created_at FROM leads WHERE id = $1 AND tenant_id = $2',
+      [leadId, tenantId],
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async business(tenantId: string, businessId: string): Promise<Record<string, unknown> | null> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT id, canonical_name, description, website, business_type_node_id, industry_node_id
+       FROM businesses WHERE id = $1 AND tenant_id = $2`,
+      [businessId, tenantId],
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async identities(tenantId: string, leadId: string): Promise<Record<string, unknown>[]> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT s.type::text AS sourceType, li.external_id AS externalId, li.username, li.profile_url AS profileUrl,
+              li.display_name AS displayName
+       FROM lead_identities li
+       JOIN sources s ON s.id = li.source_id
+       WHERE li.lead_id = $1 AND s.tenant_id = $2`,
+      [leadId, tenantId],
+    );
+    return r.rows;
+  }
+
+  async classifications(tenantId: string, leadId: string): Promise<Record<string, unknown>[]> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT lc.classification_type::text AS classificationType, lc.taxonomy_node_id AS taxonomyNodeId,
+              lc.value_text AS valueText, lc.confidence, lc.source::text AS source, lc.model_version AS modelVersion,
+              lc.analysis_id AS analysisId
+       FROM lead_classifications lc
+       JOIN leads l ON l.id = lc.lead_id
+       WHERE lc.lead_id = $1 AND l.tenant_id = $2
+       ORDER BY lc.created_at DESC`,
+      [leadId, tenantId],
+    );
+    return r.rows;
+  }
+
+  async currentAnalysis(tenantId: string, leadId: string): Promise<AnalysisRow | null> {
+    const r = await this.db.query<AnalysisRow>(
+      `SELECT a.id, a.lead_id, a.analysis_version, a.model_version, a.prompt_version, a.schema_version,
+              a.taxonomy_version, a.analysis_mode::text AS analysis_mode, a.summary, a.structured_output,
+              a.confidence, a.is_current, a.superseded_at, a.created_at
+       FROM lead_analyses a
+       JOIN leads l ON l.id = a.lead_id
+       WHERE a.lead_id = $1 AND l.tenant_id = $2 AND a.is_current = TRUE`,
+      [leadId, tenantId],
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async listEvidence(tenantId: string, leadId: string, analysisId?: string): Promise<EvidenceRow[]> {
+    if (analysisId !== undefined) {
+      const r = await this.db.query<EvidenceRow>(
+        `SELECT e.id, e.analysis_id, e.evidence_type::text AS evidence_type, e.source_type, e.source_reference,
+                e.content, e.content_hash, e.retrieved_at, e.confidence, e.metadata
+         FROM evidence e
+         JOIN leads l ON l.id = e.lead_id
+         WHERE e.lead_id = $1 AND l.tenant_id = $2 AND e.analysis_id = $3
+         ORDER BY e.created_at`,
+        [leadId, tenantId, analysisId],
+      );
+      return r.rows;
+    }
+    const r = await this.db.query<EvidenceRow>(
+      `SELECT e.id, e.analysis_id, e.evidence_type::text AS evidence_type, e.source_type, e.source_reference,
+              e.content, e.content_hash, e.retrieved_at, e.confidence, e.metadata
+       FROM evidence e
+       JOIN leads l ON l.id = e.lead_id
+       WHERE e.lead_id = $1 AND l.tenant_id = $2
+       ORDER BY e.created_at DESC LIMIT 200`,
+      [leadId, tenantId],
+    );
+    return r.rows;
+  }
+
+  async currentScore(tenantId: string, leadId: string): Promise<ScoreRow | null> {
+    const r = await this.db.query<ScoreRow>(
+      `SELECT s.id, s.scoring_policy_version_id, s.relevance_score, s.audience_quality_score,
+              s.activity_score, s.confidence_score, s.priority_score, s.is_current, s.created_at
+       FROM lead_scores s
+       JOIN leads l ON l.id = s.lead_id
+       WHERE s.lead_id = $1 AND l.tenant_id = $2 AND s.is_current = TRUE`,
+      [leadId, tenantId],
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async audienceQuality(tenantId: string, leadId: string): Promise<Record<string, unknown> | null> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT a.quality_score AS qualityScore, a.risk_level AS riskLevel, a.signals, a.confidence,
+              a.model_version AS modelVersion, a.created_at AS createdAt
+       FROM audience_quality a
+       JOIN leads l ON l.id = a.lead_id
+       WHERE a.lead_id = $1 AND l.tenant_id = $2
+       ORDER BY a.created_at DESC LIMIT 1`,
+      [leadId, tenantId],
+    );
+    return r.rows[0] ?? null;
+  }
+}

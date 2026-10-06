@@ -57,3 +57,19 @@ separately against authorized sandboxes.
 | unsupported provider actions (NOT_SUPPORTED + manual plan) | social-actions — fallback tests |
 | DB constraints (idempotency UNIQUE, suppression CHECK, down/up) | `database/tests/social-outreach-constraints.test.ts` (skip-honest without Postgres) |
 | OpenAPI contract | `@ulip/api-contract` — structural + house rules + required paths |
+
+## AI Analysis & Scoring test matrix (ADR-028, PHASE-16)
+
+| Area | Covered by |
+| --- | --- |
+| provider configuration validation (fail-fast, honest NOT_CONFIGURED) | `@ulip/ai` — config tests |
+| HTTP adapter retry/backoff/timeout + contract-repair path | `@ulip/ai` — http-llm tests (injected fetch, no network) |
+| deterministic fake provider (EN/FA, both canonical examples) | `@ulip/ai` — fake-provider tests |
+| AI request/response validation + evidence-first demotion | `@ulip/ai` — extraction-validation tests |
+| taxonomy mapping (id/label/alias, kind safety, free-text fallback) | `@ulip/analysis` — taxonomy tests |
+| five score dimensions + policy execution/version persistence | `@ulip/analysis` — dimensions tests |
+| evidence determinism + PII minimization | `@ulip/analysis` — evidence tests |
+| full flow, idempotency, versioning, failure policy | `@ulip/analysis` — flow tests |
+| real PostgreSQL: persistence, current-record, tenant isolation, transitions | `@ulip/analysis` — integration.analysis-db tests (skip-honest without Postgres) |
+| API endpoints + auth/tenant boundary + E2E through the real worker | `apps/api` — integration.analysis tests (opt-in: `ULIP_IT_WORKER=1`) |
+| external AI provider | opt-in only, when real credentials are configured (never in CI default) |

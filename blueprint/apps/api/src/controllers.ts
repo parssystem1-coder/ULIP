@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { TransitionError } from '@ulip/orchestration';
 import type { AppContext } from './composer.ts';
 import { errorReply, jsonReply, readJsonBody, type RequestContext } from './http.ts';
 import type { AuthenticatedContext } from './middleware.ts';
@@ -389,5 +390,212 @@ export function getDiscoveryJob(app: AppContext) {
       return errorReply(ctx, 404, 'NOT_FOUND', 'discovery job not found in tenant');
     }
     jsonReply(ctx, 200, row);
+  };
+}
+
+// ------------------------------------------------- analysis (Phase 16)
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ReprocessSchema = z.object({
+  mode: z.enum(['BASIC', 'STANDARD', 'DEEP']).optional(),
+});
+
+function leadIdOf(ctx: AuthenticatedContext): string | null {
+  const id = (ctx as unknown as { params: Record<string, string> }).params['leadId'] ?? '';
+  return UUID_RE.test(id) ? id : null;
+}
+
+export function getLead(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const [business, identities, classifications] = await Promise.all([
+      app.analysis.business(tenantId, lead.business_id),
+      app.analysis.identities(tenantId, leadId),
+      app.analysis.classifications(tenantId, leadId),
+    ]);
+    jsonReply(ctx, 200, {
+      id: lead.id,
+      status: lead.status,
+      business: business === null ? null : {
+        id: business['id'],
+        canonicalName: business['canonical_name'],
+        ...(business['website'] !== null && business['website'] !== undefined
+          ? { website: business['website'] }
+          : {}),
+        businessTypes: business['business_type_node_id'] !== null ? [business['business_type_node_id']] : [],
+        industries: business['industry_node_id'] !== null ? [business['industry_node_id']] : [],
+      },
+      identities,
+      classifications: classifications.map((c) => ({
+        ...c,
+        confidence: c['confidence'] === null || c['confidence'] === undefined ? null : Number(c['confidence']),
+      })),
+    });
+  };
+}
+
+export function getLeadAnalysis(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const analysis = await app.analysis.currentAnalysis(tenantId, leadId);
+    if (analysis === null) {
+      return errorReply(ctx, 404, 'NOT_FOUND', 'no analysis recorded for this lead', {
+        status: lead.status,
+      });
+    }
+    const output = analysis.structured_output;
+    const explanation = {
+      reasons: output['reasons'] ?? [],
+      uncertain: output['uncertain'] ?? [],
+      evidenceRefs: output['evidenceRefs'] ?? [],
+      meta: output['meta'] ?? {},
+    };
+    jsonReply(ctx, 200, {
+      id: analysis.id,
+      analysisVersion: analysis.analysis_version,
+      modelVersion: analysis.model_version,
+      promptVersion: analysis.prompt_version,
+      schemaVersion: analysis.schema_version,
+      taxonomyVersion: analysis.taxonomy_version,
+      analysisMode: analysis.analysis_mode,
+      summary: analysis.summary,
+      confidence: analysis.confidence === null ? null : Number(analysis.confidence),
+      isCurrent: analysis.is_current,
+      supersededAt: analysis.superseded_at,
+      createdAt: analysis.created_at,
+      universal: output['universal'] ?? {},
+      explanation,
+      leadStatus: lead.status,
+    });
+  };
+}
+
+export function getLeadEvidence(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const analysisId = ctx.query.get('analysisId') ?? undefined;
+    const rows = await app.analysis.listEvidence(tenantId, leadId, analysisId);
+    jsonReply(ctx, 200, {
+      data: rows.map((e) => ({
+        id: e.id,
+        analysisId: e.analysis_id,
+        evidenceType: e.evidence_type,
+        sourceType: e.source_type,
+        sourceReference: e.source_reference,
+        content: e.content,
+        contentHash: e.content_hash,
+        retrievedAt: e.retrieved_at,
+        confidence: e.confidence === null ? null : Number(e.confidence),
+      })),
+    });
+  };
+}
+
+export function getLeadScores(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const score = await app.analysis.currentScore(tenantId, leadId);
+    if (score === null) {
+      return errorReply(ctx, 404, 'NOT_FOUND', 'no current score for this lead', { status: lead.status });
+    }
+    const reviewOutcome = ['QUALIFIED', 'REVIEW_REQUIRED', 'REJECTED'].includes(lead.status)
+      ? lead.status
+      : undefined;
+    jsonReply(ctx, 200, {
+      relevance: Number(score.relevance_score),
+      audienceQuality: Number(score.audience_quality_score),
+      activity: Number(score.activity_score),
+      confidence: Number(score.confidence_score),
+      priority: Number(score.priority_score),
+      scoringPolicyVersion: score.scoring_policy_version_id,
+      ...(reviewOutcome !== undefined ? { reviewOutcome } : {}),
+      createdAt: score.created_at,
+    });
+  };
+}
+
+export function reprocessLead(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 400, 'VALIDATION_FAILED', 'leadId must be a UUID');
+    const parsed = ReprocessSchema.safeParse(ctx.body ?? {});
+    if (!parsed.success) return validationError(ctx, parsed.error);
+
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+
+    const idemKey = (ctx.headers['idempotency-key'] as string | undefined) ?? '';
+    const scope = 'lead.reprocess';
+    const requestHash = createHash('sha256').update(JSON.stringify({ leadId, ...parsed.data })).digest('hex');
+    if (idemKey !== '') {
+      const existing = await app.db.query<{ status: string; response_snapshot: { jobId?: string } | null }>(
+        `SELECT status, response_snapshot FROM idempotency_keys
+         WHERE tenant_id = $1 AND scope = $2 AND idempotency_key = $3`,
+        [tenantId, scope, idemKey],
+      );
+      const hit = existing.rows[0];
+      if (hit !== undefined && hit.status === 'COMPLETED' && typeof hit.response_snapshot?.jobId === 'string') {
+        const job = await app.jobs.findById(tenantId, hit.response_snapshot.jobId);
+        if (job !== null) return jsonReply(ctx, 202, { ...job, replayed: true });
+      }
+      if (hit !== undefined && hit.status === 'IN_FLIGHT') {
+        return errorReply(ctx, 409, 'IDEMPOTENCY_IN_FLIGHT', 'an identical reprocess request is still in flight');
+      }
+      if (hit !== undefined) {
+        await app.db.query(
+          `DELETE FROM idempotency_keys WHERE tenant_id = $1 AND scope = $2 AND idempotency_key = $3`,
+          [tenantId, scope, idemKey],
+        );
+      }
+      try {
+        await app.db.query(
+          `INSERT INTO idempotency_keys (tenant_id, scope, idempotency_key, request_hash, status, expires_at)
+           VALUES ($1, $2, $3, $4, 'IN_FLIGHT', now() + interval '24 hours')`,
+          [tenantId, scope, idemKey, requestHash],
+        );
+      } catch {
+        return errorReply(ctx, 409, 'IDEMPOTENCY_IN_FLIGHT', 'an identical reprocess request is still in flight');
+      }
+    }
+
+    try {
+      const job = await app.orchestrator.reprocess({
+        tenantId,
+        leadId,
+        analysisMode: parsed.data.mode ?? 'STANDARD',
+        correlationId: ctx.requestId,
+      });
+      if (idemKey !== '') {
+        await app.db.query(
+          `UPDATE idempotency_keys SET status = 'COMPLETED', response_snapshot = $4::jsonb
+           WHERE tenant_id = $1 AND scope = $2 AND idempotency_key = $3`,
+          [tenantId, scope, idemKey, JSON.stringify({ jobId: job.id })],
+        );
+      }
+      jsonReply(ctx, 202, { ...job, transport: { enqueued: true } });
+    } catch (err) {
+      if (err instanceof TransitionError) {
+        return errorReply(ctx, 409, 'CONFLICT', err.message);
+      }
+      throw err;
+    }
   };
 }

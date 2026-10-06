@@ -1,0 +1,27 @@
+{
+  "name": "@ulip/analysis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ulip/ai": "workspace:*",
+    "@ulip/domain": "workspace:*",
+    "@ulip/orchestration": "workspace:*",
+    "@ulip/runtime": "workspace:*",
+    "@ulip/scoring": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.0"
+  }
+}

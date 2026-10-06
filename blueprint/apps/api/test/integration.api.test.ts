@@ -99,8 +99,14 @@ test('API ↔ Worker: persistent job completes via BullMQ + DB truth', async (t)
     t.skip('worker not running (set ULIP_IT_WORKER=1 with dev:worker up)');
     return;
   }
-  const src = await authed('/sources', { method: 'POST', body: JSON.stringify({ type: 'INSTAGRAM', name: 'it-job-src' }) });
-  const job = await authed('/jobs', { method: 'POST', body: JSON.stringify({ type: 'DISCOVERY', payload: { sourceId: src.body.id } }) });
+  const src = await authed('/sources', { method: 'POST', body: JSON.stringify({ type: 'FAKE', name: 'it-job-src' }) });
+  assert.equal(src.status, 201);
+  // A runnable source: the deterministic fake connector (explicit local E2E).
+  // An unconfigured INSTAGRAM source intentionally fails NOT_CONFIGURED.
+  const job = await authed('/jobs', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'DISCOVERY', payload: { sourceId: src.body.id, allowFake: true, maxCandidates: 5 } }),
+  });
   assert.equal(job.status, 202);
 
   const deadline = Date.now() + 60_000;

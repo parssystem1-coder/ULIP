@@ -69,3 +69,27 @@ Analysis Run (ai_runs row, status=RUNNING)
   orphan analyses cannot exist because evidence attach precedes analysis commit.
 - Reprocessing creates **new** analysis/evidence versions; old versions stay
   auditable per the current-version semantics (ADR-024).
+
+## Implemented runtime (Phase 16, ADR-028)
+
+`@ulip/analysis` `buildEvidenceDrafts()` (`blueprint/packages/analysis/src/evidence.ts`)
+observes the loaded lead context and emits one record per observed fact — name,
+bio, categories, city/address, website/contact presence, source metadata,
+sampled captions, engagement. Rules:
+
+- deterministic ids derived from (job, lead, type, source reference, content
+  hash) ⇒ a retry rebuilds byte-identical evidence instead of duplicating it;
+- never derived from a field that was not actually present (missing ⇒ no
+  evidence row, not an invented one);
+- contact values are never copied into evidence content (PII minimization),
+  only their presence is recorded;
+- every content sample exposes its evidence id, so each AI claim can cite it.
+
+Evidence is inserted in the same transaction as the analysis row, before the
+row becomes current (§ write order above). `enforceEvidenceFirst()` in
+`@ulip/ai` demotes any prediction whose evidence set is empty to
+`UNAVAILABLE`/`UNKNOWN`, and `@ulip/analysis` stores per-field
+`availability` + `reasons[]` + `uncertainFields[]` in the analysis output, so
+`GET /leads/{leadId}/evidence` and `GET /leads/{leadId}/analysis` answer
+"why" with structured reasons and evidence references — never hidden
+chain-of-thought.

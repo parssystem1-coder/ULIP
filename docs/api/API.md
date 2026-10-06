@@ -127,7 +127,7 @@ sort
 # 6. Lead Detail
 
 ```http
-GET /api/v1/leads/:id
+GET /api/v1/leads/:leadId
 ```
 
 Response:
@@ -146,26 +146,66 @@ Response:
 
 ---
 
-# 7. Analyze Lead
+# 7. Lead Analysis (Phase 16, ADR-028)
 
 ```http
-POST /api/v1/leads/:id/analyze
+GET /api/v1/leads/:leadId/analysis
 ```
 
-Request:
+Returns the **current** analysis row plus its explainability payload — structured
+reasons, per-field confidence/availability, taxonomy mapping and evidence ids.
+No chain-of-thought is ever returned. Historical versions are available in the
+DB (ADR-024) but not exposed as a list endpoint yet.
 
 ```json
 {
-  "mode": "STANDARD"
+  "analysisId": "...",
+  "analysisVersion": 3,
+  "isCurrent": true,
+  "analysisMode": "STANDARD",
+  "provider": "fake",
+  "modelVersion": "fake-1",
+  "promptVersion": "p1",
+  "schemaVersion": "s1",
+  "confidence": 0.86,
+  "classification": {
+    "businessType": { "value": "wholesaler", "confidence": 0.9, "evidenceIds": ["ev_1"], "availability": "AVAILABLE" },
+    "industry": { "value": "printing-supplies", "confidence": 0.88, "evidenceIds": ["ev_1"], "availability": "AVAILABLE" },
+    "specialties": [],
+    "brands": [],
+    "city": { "value": "Tehran", "confidence": 0.95, "evidenceIds": ["ev_2"], "availability": "AVAILABLE", "provenance": "EXPLICIT" }
+  },
+  "reasons": [
+    { "code": "BUSINESS_TYPE_MATCHED", "detail": "wholesaler", "evidenceIds": ["ev_1"] }
+  ],
+  "uncertainFields": ["brands"],
+  "createdAt": "2026-10-06T00:00:00Z"
 }
 ```
+
+A lead that has never been analyzed returns `404 NOT_FOUND` — the API never
+fabricates an analysis.
+
+---
+
+# 7b. Reprocess Lead
+
+```http
+POST /api/v1/leads/:leadId/reprocess
+```
+
+Creates (or reuses) the persistent `ANALYSIS`/`REPROCESS` job through the
+orchestrator and returns it. `Idempotency-Key` is honoured: a duplicate request
+returns the same job instead of starting a second one. Lifecycle state is only
+ever moved by the orchestrator, never by this controller.
 
 Response:
 
 ```json
 {
   "jobId": "job_456",
-  "status": "QUEUED"
+  "status": "PENDING",
+  "leadId": "lead_123"
 }
 ```
 
@@ -174,16 +214,24 @@ Response:
 # 8. Lead Evidence
 
 ```http
-GET /api/v1/leads/:id/evidence
+GET /api/v1/leads/:leadId/evidence
 ```
+
+Paginated evidence rows for the lead: type, source reference, content snippet,
+confidence, provenance and the analysis id they support.
 
 ---
 
 # 9. Lead Scores
 
 ```http
-GET /api/v1/leads/:id/scores
+GET /api/v1/leads/:leadId/scores
 ```
+
+Returns the **current** score row: all five dimensions
+(`relevanceScore`, `audienceQualityScore`, `activityScore`, `confidenceScore`,
+`priorityScore`) plus `scoringPolicyVersionId` and `isCurrent` — the policy
+version that produced them.
 
 ---
 

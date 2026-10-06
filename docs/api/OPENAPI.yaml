@@ -265,6 +265,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundError'
+  /leads/{leadId}/analysis:
+    get:
+      tags: [Analysis]
+      summary: Get the current AI analysis (versioned, evidence-traceable)
+      description: |
+        Returns the current lead_analyses row with the universal business model
+        (Business Type / Industry / Specialty / Brand / Location) plus a concise
+        structured explanation: reasons, evidence references and uncertain
+        fields. No chain-of-thought is exposed.
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadAnalysisDetail'
+        '404':
+          description: No analysis recorded for this lead yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
   /leads/search/natural-language:
     post:
       tags: [Leads]
@@ -1520,6 +1544,58 @@ components:
         isCurrent: { type: boolean }
         supersededAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+    LeadAnalysisDetail:
+      allOf:
+        - $ref: '#/components/schemas/LeadAnalysis'
+        - type: object
+          required: [universal, explanation, leadStatus]
+          properties:
+            universal:
+              type: object
+              description: >-
+                Universal business model with per-field availability,
+                confidence, taxonomy node id and evidence references.
+                Fields that could not be evidenced are explicitly unavailable.
+              additionalProperties: true
+              example:
+                businessType: { available: true, value: Wholesaler, confidence: 0.92, evidenceIds: [] }
+                industry: { available: true, value: Printing, confidence: 0.9, evidenceIds: [] }
+                specialties:
+                  - { available: true, value: Printer Parts, confidence: 0.88, evidenceIds: [] }
+                brands:
+                  - { available: true, value: HP, confidence: 0.9, evidenceIds: [] }
+                city: { available: true, value: Tehran, provenance: EXPLICIT, confidence: 0.86, evidenceIds: [] }
+            explanation:
+              type: object
+              required: [reasons, uncertain, evidenceRefs, meta]
+              properties:
+                reasons:
+                  type: array
+                  description: Concise structured reasons (score contributions + evidence ids).
+                  items:
+                    type: object
+                    required: [dimension, code, message, delta, evidenceIds]
+                    properties:
+                      dimension: { type: string, enum: [relevance, audienceQuality, activity, confidence] }
+                      code: { type: string }
+                      message: { type: string }
+                      delta: { type: number }
+                      evidenceIds: { type: array, items: { type: string } }
+                uncertain:
+                  type: array
+                  items:
+                    type: object
+                    required: [field, value, reason]
+                    properties:
+                      field: { type: string }
+                      value: { type: string }
+                      reason: { type: string }
+                evidenceRefs: { type: array, items: { type: string, format: uuid } }
+                meta:
+                  type: object
+                  additionalProperties: true
+                  description: Provider/model/prompt/schema versions + jobId + mode (AI or RULES_FALLBACK).
+            leadStatus: { $ref: '#/components/schemas/LeadStatus' }
     Evidence:
       type: object
       required: [id, evidenceType, sourceType, sourceReference, contentHash, retrievedAt]

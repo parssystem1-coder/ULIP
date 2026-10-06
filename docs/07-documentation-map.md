@@ -38,3 +38,11 @@ When code differs from architecture, either update the architecture or create an
   readable snapshot
 - `docs/api/OPENAPI.yaml` — authoritative API contract (ADR-020)
 - `blueprint/packages/orchestration` — typed state-machine contracts
+- `docs/adr/ADR-028-ai-analysis-scoring-runtime.md` +
+  `prompts/phases/PHASE-16-AI-ANALYSIS-SCORING.md` — live AI analysis/scoring
+  runtime (`@ulip/ai` provider selection, `@ulip/analysis` pipeline)
+- `blueprint/packages/analysis` — evidence → classification → policy scoring →
+  lead-state transition implementation (`buildEvidenceDrafts`,
+  `computeDimensions`, `DbAnalysisStore`, `runAnalysisFlow`)
+- `docs/ai/TASK-CONTRACTS.md` — prose mirror of the typed AI contracts,
+  including the implemented provider-selection/validation contract

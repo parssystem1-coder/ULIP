@@ -52,12 +52,14 @@ export class Queue {
       priority?: number | undefined;
       attempts?: number | undefined;
       backoff?: { type: string; delay: number } | undefined;
+      delay?: number | undefined;
     },
   ): Promise<{ id: string | undefined }> {
     const options: JobsOptions = {
       removeOnComplete: 1000,
       removeOnFail: 1000,
     };
+    if (opts.delay !== undefined) options.delay = opts.delay;
     if (opts.priority !== undefined) options.priority = opts.priority;
     if (opts.attempts !== undefined) options.attempts = opts.attempts;
     if (opts.backoff !== undefined) {

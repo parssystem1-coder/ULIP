@@ -286,13 +286,16 @@ For every phase:
 
 ---
 
-# 6. CANONICAL IMPLEMENTATION ROADMAP — 13 PHASES (00–12)
+# 6. CANONICAL IMPLEMENTATION ROADMAP — 13 PHASES (00–12) + EXTENSIONS
 
 The canonical roadmap was **13 phases (00–12)** and is extended by
-**PHASE-13 — Social Actions & Outreach** (ADR-026), which adds the
-provider-agnostic social actions and campaign outreach modules as bounded
-contexts. The authoritative per-phase
-specifications are the files in `prompts/phases/` (PHASE-00 … PHASE-13), kept in
+**PHASE-13 — Social Actions & Outreach** (ADR-026), **PHASE-14 — Runtime
+Foundation**, **PHASE-15 — Real Discovery & First Source Integration** (ADR-027)
+and **PHASE-16 — AI Analysis & Scoring Runtime** (ADR-028), which add the
+provider-agnostic social actions, campaign outreach, the persistent API/worker
+runtime, real discovery ingestion, and the live AI analysis + scoring pipeline.
+The authoritative per-phase
+specifications are the files in `prompts/phases/` (PHASE-00 … PHASE-16), kept in
 lockstep with `docs/implementation/IMPLEMENTATION-PLAN.md`. Every phase prompt defines: objective, scope, dependencies,
 files affected, database changes, API changes, implementation tasks, tests,
 documentation, and definition of done.
@@ -312,10 +315,16 @@ documentation, and definition of done.
 | 10 | Human Review / Feedback / Campaigns / Export | PHASE-10-REVIEW-FEEDBACK-CAMPAIGNS-EXPORT.md |
 | 11 | Observability / Testing / Security | PHASE-11-OBSERVABILITY-TESTING-SECURITY.md |
 | 12 | Hardening & Documentation | PHASE-12-HARDENING-DOCUMENTATION.md |
+| 13 | Social Actions & Outreach (ADR-026) | PHASE-13-SOCIAL-ACTIONS-OUTREACH.md |
+| 14 | Runtime Foundation (API + worker + persistent jobs) | — (implemented, see IMPLEMENTATION-PLAN §Phase 14) |
+| 15 | Real Discovery & First Source Integration (ADR-027) | PHASE-15-REAL-DISCOVERY.md |
+| 16 | AI Analysis & Scoring Runtime (ADR-028) | PHASE-16-AI-ANALYSIS-SCORING.md |
 
 Execution order is exactly the table order. The Analysis Orchestrator (ADR-016) is
 introduced in Phase 02 (persistent `jobs`/`job_attempts`/`job_events` + lead
-lifecycle states) and extended as processing stages land in Phases 05–09.
+lifecycle states) and extended as processing stages land in Phases 05–09;
+Phase 16 connects it to the live AI runtime so `ANALYSIS_PENDING` leads reach
+`SCORED` → `QUALIFIED | REVIEW_REQUIRED | REJECTED` through the worker.
 
 
 # 7. DEFINITION OF DONE

@@ -154,3 +154,37 @@ stays NOT_CONFIGURED/UNSUPPORTED; local E2E uses the deterministic fake
 provider behind an explicit `allowFake: true` opt-in. No scraping, no
 anti-bot bypass, ever. See `docs/adr/ADR-027-real-discovery-pipeline.md` and
 `prompts/phases/PHASE-15-REAL-DISCOVERY.md`.
+
+## Phase 16 — AI Analysis & Scoring Runtime (implemented)
+
+Leads now complete the lifecycle through the real worker:
+`ANALYSIS_PENDING → ANALYZING → AI analysis → evidence validation → scoring →
+SCORED → QUALIFIED | REVIEW_REQUIRED | REJECTED`.
+
+- **AI runtime** (`@ulip/ai`): provider-agnostic `selectAiRuntime()` with two
+  honest states — `READY` or `NOT_CONFIGURED`. A configurable OpenAI-compatible
+  HTTP LLM adapter (`AI_PROVIDER/AI_BASE_URL/AI_API_KEY/AI_MODEL/
+  AI_TIMEOUT_MS/AI_MAX_RETRIES/AI_RETRY_BACKOFF_MS`) plus optional vision and
+  embedding slots; no vendor is hard-coded. Production never selects the
+  deterministic fake silently.
+- **Deterministic fake provider** for tests/local E2E: predictable results for
+  "HP printer parts wholesaler Tehran" and "Shiraz hair salon coloring
+  balayage", in English and Persian, citing only evidence it actually matched.
+- **Analysis runtime** (`@ulip/analysis`): evidence built from observed data
+  (profile, bio, captions, location, engagement, contacts-presence) and
+  persisted *before* the model call; universal business model (Business Type /
+  Industry / Specialty / Sub-specialty / Brand / Location) mapped onto existing
+  taxonomy nodes; evidence-first validation demotes unsupported claims.
+- **Scoring**: the four independent dimensions plus policy-weighted priority,
+  with weights/thresholds loaded from `scoring_policy_versions` (ACTIVE
+  version; bootstrapped once per tenant) — never from application code.
+- **Versioning & idempotency**: deterministic per-job analysis/score ids, one
+  transaction per run, exactly one current analysis and score per lead,
+  history superseded but never deleted.
+- **API** (OpenAPI-synced): `GET /leads/{id}`, `GET /leads/{id}/analysis`,
+  `GET /leads/{id}/evidence`, `GET /leads/{id}/scores`,
+  `POST /leads/{id}/reprocess` — all tenant-scoped and authenticated.
+- Jev remains unplugged; `DecisionProvider` stays optional (ADR-017).
+
+See `docs/adr/ADR-028-ai-analysis-scoring-runtime.md` and
+`prompts/phases/PHASE-16-AI-ANALYSIS-SCORING.md`.

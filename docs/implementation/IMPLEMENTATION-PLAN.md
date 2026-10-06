@@ -137,3 +137,53 @@ Resolution (identity keys) → Lead creation/update → ANALYSIS_PENDING
   duplicated), tenant isolation + 401 + idempotency replay tested.
   Instagram status: configured-but-unimplemented boundary, NOT_CONFIGURED
   without credentials, UNSUPPORTED capability — honest, per ADR-027.
+
+## Phase 16 — AI Analysis & Scoring Runtime (implemented)
+
+The AI contracts are now connected to the real pipeline (ADR-028):
+
+```text
+ANALYSIS_PENDING → ANALYZING → evidence → AI extraction → validation
+→ taxonomy mapping → policy scoring → SCORED → THRESHOLD_MAP
+→ QUALIFIED | REVIEW_REQUIRED | REJECTED
+```
+
+- **packages/ai** (`@ulip/ai`) — runtime layer added on top of the existing
+  contracts: `AiConfigSchema`/`loadAiConfig` (fail-fast validation, missing
+  credentials → NOT_CONFIGURED), `selectAiRuntime()` (READY | NOT_CONFIGURED,
+  fake refused in production), `HttpLlmProvider` (OpenAI-compatible Chat
+  Completions with timeout, bounded retries, one contract-repair attempt,
+  `response_format` sanitize-retry), optional `HttpVisionProvider` /
+  `HttpEmbeddingProvider`, `DeterministicFakeLlmProvider`,
+  `validateExtractionOutput` + `enforceEvidenceFirst` (evidence-first), typed
+  `AiError` hierarchy mapped onto orchestration ErrorCodes.
+- **packages/analysis** (`@ulip/analysis`, new) — `runAnalysisForLead` flow,
+  `buildEvidenceDrafts` (observed data only, deterministic ids),
+  `mapToTaxonomy` (id → label → alias, kind-checked, honest free-text
+  fallback), `computeDimensions` (4 independent dimensions with reasons),
+  `DbScoringPolicyResolver` (+ idempotent bootstrap of the documented default),
+  `DbAnalysisStore` (one transaction: analysis + evidence link +
+  classifications + current-version supersessions + scores + `ai_runs`),
+  `loadLeadContext` (tenant-scoped inputs).
+- **packages/orchestration** — implemented `DbOrchestrator` (the ONLY writer
+  of `leads.status`): `startAnalysis`, `reprocess`, `resume`, `cancel`,
+  conditional `applyLeadEvent` validated against `LEAD_TRANSITION_TABLE`.
+- **apps/worker** — ANALYSIS/REPROCESS jobs run the real analysis flow;
+  step progress (ANALYSIS → EVIDENCE_VALIDATION → SCORING) written to the job
+  row; failure handling per `FAILURE_POLICY` (bounded retry re-arms the row to
+  PENDING with `run_after` + delayed re-enqueue + `job_attempts` /
+  `RETRY_SCHEDULED`, exhausted retries → lead FAILED, AI_UNAVAILABLE →
+  REVIEW_REQUIRED, SKIPPED jobs recorded); idempotent replay via
+  `ai_runs.job_id`.
+- **apps/api** — `GET /leads/{id}`, `GET /leads/{id}/analysis`,
+  `GET /leads/{id}/evidence`, `GET /leads/{id}/scores`,
+  `POST /leads/{id}/reprocess` (optional Idempotency-Key replay, domain-level
+  active-job reuse, 409 on illegal moves) — all authenticated and
+  tenant-scoped; `AnalysisRepository` read side.
+- **Verified** (real stack): PostgreSQL integration tests green (full run,
+  duplicate-run idempotency, supersession, tenant isolation, orchestrator
+  transitions), worker E2E green (discovery → reprocess → analysis → scores →
+  terminal state → versioning → isolation/401), DB constraint suites 8/8 +
+  5/5 on real PostgreSQL.
+- Jev remains unplugged: no DecisionProvider is required for RULES_ONLY or
+  LLM_ONLY execution.

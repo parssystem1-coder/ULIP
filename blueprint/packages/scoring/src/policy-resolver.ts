@@ -11,8 +11,8 @@ import type {
   ResolvedScoringPolicy,
   ScoreResult,
   ScoreReviewOutcome,
-} from './contracts.js';
-import type { ScoreDimensionInput } from './contracts.js';
+} from './contracts.ts';
+import type { ScoreDimensionInput } from './contracts.ts';
 
 export interface ScoringPolicyVersionRow {
   id: string;

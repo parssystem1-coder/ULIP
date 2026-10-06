@@ -334,6 +334,13 @@ Exactly one `is_current = TRUE` row per lead (partial unique index
 transaction BEFORE the new row becomes current; `evidence.analysis_id`
 makes orphan references impossible.
 
+**Who writes it (Phase 16, ADR-028).** `@ulip/analysis` `DbAnalysisStore`
+(`blueprint/packages/analysis/src/store.ts`) — and only it. Ids are derived
+from `job_id`/`lead_id`, so a retried job rewrites the same row instead of
+inserting a second current one. Superseding (`is_current = FALSE`,
+`superseded_at = now()`) happens in the same transaction as the new current
+insert. Readers: `GET /leads/{leadId}/analysis` (API) — tenant-scoped.
+
 ---
 
 # 15. evidence
@@ -367,6 +374,12 @@ is_current
 superseded_at
 created_at
 ```
+
+All five dimensions are written together per analysis run, each with the
+`scoring_policy_version_id` (ACTIVE version resolved by `@ulip/scoring`
+`resolvePolicy()`) that produced them. Thresholds are read from that persisted
+policy — never from application code. Exactly one `is_current = TRUE` row per
+lead, same supersession rule as `lead_analyses`.
 
 Exactly one current score per lead; the list filter
 `GET /leads?minRelevance=` queries the partial index

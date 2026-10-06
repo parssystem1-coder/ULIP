@@ -11,6 +11,12 @@
  * (connector → raw snapshot → normalization → dedup/ER → lead →
  * ANALYSIS_PENDING). Deterministic fake connectors run ONLY when the job
  * payload explicitly opts in (`allowFake: true`) — local E2E only.
+ *
+ * Phase 16: ANALYSIS / REPROCESS jobs run the real AI analysis runtime
+ * (@ulip/analysis): ANALYSIS_PENDING → ANALYZING → evidence → AI extraction
+ * → taxonomy mapping → policy scoring → SCORED → QUALIFIED/REVIEW/REJECTED.
+ * Provider selection happens BEFORE the ANALYZING transition; NOT_CONFIGURED
+ * fails the job without touching the lead and never fabricates a result.
  */
 
 import { Worker, type ConnectionOptions, type Job as BullJob } from 'bullmq';
@@ -25,6 +31,17 @@ import {
   PersianAwareNormalizer,
   runDiscovery,
 } from '@ulip/discovery';
+import {
+  AnalysisRunError,
+  AnalysisSkipError,
+  DbAnalysisStore,
+  DbScoringPolicyResolver,
+  runAnalysisForLead,
+  type AnalysisOutcome,
+  type AnalysisJobPayload,
+} from '@ulip/analysis';
+import { loadAiConfig, selectAiRuntime, type AiRuntime } from '@ulip/ai';
+import { DbOrchestrator, FAILURE_POLICY, type ErrorCode, type PipelineStep } from '@ulip/orchestration';
 import { Database, loadEnv, Logger } from '@ulip/runtime';
 import { createRedisConnection, Queue } from './queue.ts';
 
@@ -33,6 +50,10 @@ export interface WorkerDeps {
   log: Logger;
   db: Database;
   registry: ConnectorRegistry;
+  ai: AiRuntime;
+  analysisStore: DbAnalysisStore;
+  policy: DbScoringPolicyResolver;
+  orchestrator: DbOrchestrator;
 }
 
 export interface EnqueueResult {
@@ -53,14 +74,30 @@ export async function enqueuePersistentJob(
   redisUrl: string,
   jobId: string,
   priority = 0,
+  delayMs = 0,
 ): Promise<EnqueueResult> {
   const queue = new Queue(redisUrl);
   try {
-    const bull = await queue.add('ulip-jobs', { jobId }, { priority, attempts: 3, backoff: { type: 'exponential', delay: 1000 } });
+    const opts: { priority: number; attempts: number; backoff: { type: string; delay: number }; delay?: number } = {
+      priority,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    };
+    if (delayMs > 0) opts.delay = delayMs;
+    const bull = await queue.add('ulip-jobs', { jobId }, opts);
     return { bullJobId: bull.id ?? jobId };
   } finally {
     await queue.close();
   }
+}
+
+interface ClaimedRow {
+  type: string;
+  payload: Record<string, unknown>;
+  tenant_id: string;
+  correlation_id: string | null;
+  attempt_count: number;
+  max_attempts: number;
 }
 
 async function processJob(deps: WorkerDeps, bull: BullJob<{ jobId: string }>): Promise<void> {
@@ -71,18 +108,17 @@ async function processJob(deps: WorkerDeps, bull: BullJob<{ jobId: string }>): P
   // Exactly-once claim from the source of truth.
   const claimed = await db.query(
     `UPDATE jobs SET status = 'RUNNING', started_at = now(), attempt_count = attempt_count + 1
-     WHERE id = $1 AND status = 'PENDING' RETURNING type::text AS type, payload, tenant_id, correlation_id`,
+     WHERE id = $1 AND status = 'PENDING'
+     RETURNING type::text AS type, payload, tenant_id, correlation_id, attempt_count, max_attempts`,
     [jobId],
   );
-  const row = claimed.rows[0] as
-    | { type: string; payload: Record<string, unknown>; tenant_id: string; correlation_id: string | null }
-    | undefined;
+  const row = claimed.rows[0] as ClaimedRow | undefined;
   if (row === undefined) {
     log.info('job not claimable (already running/finished)', { jobId });
     return;
   }
   const jobLog = log.bind({ jobId, type: row.type, tenantId: row.tenant_id });
-  jobLog.info('job claimed');
+  jobLog.info('job claimed', { attempt: row.attempt_count, maxAttempts: row.max_attempts });
 
   try {
     if (row.type === 'DISCOVERY') {
@@ -91,6 +127,19 @@ async function processJob(deps: WorkerDeps, bull: BullJob<{ jobId: string }>): P
         jobId,
         correlationId: row.correlation_id,
       });
+    } else if (row.type === 'ANALYSIS' || row.type === 'REPROCESS') {
+      const leadId = String(row.payload['leadId'] ?? '');
+      if (leadId !== '' && (await deps.analysisStore.hasSuccessfulRun(jobId, leadId))) {
+        // Idempotent replay: this job already persisted its result rows.
+        jobLog.info('analysis already completed for this job (idempotent replay)', { leadId });
+      } else {
+        await runAnalysisFlowForJob(deps, row.payload, {
+          tenantId: row.tenant_id,
+          jobId,
+          correlationId: row.correlation_id,
+          jobType: row.type,
+        });
+      }
     } else {
       throw new Error(`no worker flow implemented for job type ${row.type}`);
     }
@@ -101,19 +150,99 @@ async function processJob(deps: WorkerDeps, bull: BullJob<{ jobId: string }>): P
     ]);
     jobLog.info('job completed');
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const code = err instanceof DiscoveryInputError ? 'BAD_REQUEST' : err instanceof ConnectorNotAvailableError ? 'NOT_CONFIGURED' : 'WORKER_ERROR';
-    await db.query(
-      `UPDATE jobs SET status = 'FAILED', error_code = $2, error_message = $3, failed_at = now() WHERE id = $1`,
-      [jobId, code, message],
-    );
-    await db.query(`INSERT INTO job_events (job_id, event_type, payload) VALUES ($1, 'FAILED', $2::jsonb)`, [
-      jobId,
-      JSON.stringify({ message, code }),
-    ]);
-    jobLog.error('job failed', { error: message, code });
+    await handleJobFailure(deps, jobId, row, err, jobLog);
     throw err;
   }
+}
+
+/**
+ * Applies the existing failure lifecycle (ADR-016 FAILURE_POLICY) to the
+ * persistent job row. Analysis failures may re-arm the row as PENDING with a
+ * delayed transport re-enqueue (DB stays the source of truth); everything
+ * terminal is recorded as FAILED with an error code + job_attempts row.
+ */
+async function handleJobFailure(
+  deps: WorkerDeps,
+  jobId: string,
+  row: ClaimedRow,
+  err: unknown,
+  jobLog: Logger,
+): Promise<void> {
+  const { db } = deps;
+  const message = err instanceof Error ? err.message : String(err);
+
+  if (err instanceof AnalysisSkipError) {
+    await db.query(`UPDATE jobs SET status = 'SKIPPED', error_code = 'SKIPPED', error_message = $2, completed_at = now() WHERE id = $1`, [jobId, message]);
+    await db.query(`INSERT INTO job_events (job_id, event_type, payload) VALUES ($1, 'STATUS', $2::jsonb)`, [
+      jobId, JSON.stringify({ status: 'SKIPPED', message }),
+    ]);
+    jobLog.warn('job skipped', { reason: message });
+    return;
+  }
+
+  const isAnalysis = err instanceof AnalysisRunError;
+  const code: ErrorCode | string = isAnalysis
+    ? (err as AnalysisRunError).code
+    : err instanceof DiscoveryInputError
+      ? 'BAD_REQUEST'
+      : err instanceof ConnectorNotAvailableError
+        ? 'NOT_CONFIGURED'
+        : 'WORKER_ERROR';
+
+  // Bounded retry: only when the failure policy says RETRY and attempts remain.
+  if (isAnalysis) {
+    const runErr = err as AnalysisRunError;
+    const policyEntry = FAILURE_POLICY[runErr.code];
+    const allowed = Math.min(policyEntry.maxAttempts ?? row.max_attempts, row.max_attempts);
+    if (policyEntry.action === 'RETRY' && row.attempt_count < allowed) {
+      const backoffSeconds = (policyEntry.backoffBaseSeconds ?? 30) * row.attempt_count;
+      const runAfter = new Date(Date.now() + backoffSeconds * 1000).toISOString();
+      const rearmed = await db.query(
+        `UPDATE jobs SET status = 'PENDING', run_after = $2::timestamptz, error_code = $3, error_message = $4, updated_at = now()
+         WHERE id = $1 AND status = 'RUNNING' RETURNING id`,
+        [jobId, runAfter, code, message],
+      );
+      if ((rearmed.rowCount ?? 0) > 0) {
+        await db.query(
+          `INSERT INTO job_attempts (job_id, attempt_no, started_at, finished_at, outcome, error_code, error_message)
+           VALUES ($1, $2, now() - interval '1 second', now(), 'RETRYABLE_FAILURE', $3, $4)
+           ON CONFLICT (job_id, attempt_no) DO NOTHING`,
+          [jobId, row.attempt_count, code, message],
+        );
+        await db.query(`INSERT INTO job_events (job_id, event_type, payload) VALUES ($1, 'RETRY_SCHEDULED', $2::jsonb)`, [
+          jobId,
+          JSON.stringify({ attempt: row.attempt_count, allowed, backoffSeconds, runAfter, code }),
+        ]);
+        await enqueuePersistentJob(deps.env.REDIS_URL, jobId, 0, backoffSeconds * 1000).catch((e: unknown) =>
+          jobLog.warn('retry re-enqueue failed (row stays PENDING)', { error: e instanceof Error ? e.message : String(e) }),
+        );
+        jobLog.warn('job scheduled for retry', { attempt: row.attempt_count, allowed, backoffSeconds });
+        return;
+      }
+    }
+    if (runErr.leadTransitioned && (runErr.action === 'RETRY' || runErr.action === 'FALLBACK')) {
+      // Retry exhausted (or no fallback available): lead → FAILED.
+      await deps.orchestrator
+        .applyLeadEvent({ leadId: String(row.payload['leadId'] ?? ''), tenantId: row.tenant_id, event: 'ANALYSIS_FAILED', expectedFrom: 'ANALYZING', to: 'FAILED' })
+        .catch((e: unknown) => jobLog.error('failed to move lead to FAILED', { error: e instanceof Error ? e.message : String(e) }));
+    }
+  }
+
+  await db.query(
+    `UPDATE jobs SET status = 'FAILED', error_code = $2, error_message = $3, failed_at = now() WHERE id = $1`,
+    [jobId, code, message],
+  );
+  await db.query(
+    `INSERT INTO job_attempts (job_id, attempt_no, started_at, finished_at, outcome, error_code, error_message)
+     VALUES ($1, $2, now() - interval '1 second', now(), 'FATAL_FAILURE', $3, $4)
+     ON CONFLICT (job_id, attempt_no) DO NOTHING`,
+    [jobId, row.attempt_count, code, message],
+  );
+  await db.query(`INSERT INTO job_events (job_id, event_type, payload) VALUES ($1, 'FAILED', $2::jsonb)`, [
+    jobId,
+    JSON.stringify({ message, code }),
+  ]);
+  jobLog.error('job failed', { error: message, code });
 }
 
 export interface DiscoveryRunOutcome {
@@ -163,6 +292,43 @@ export async function runDiscoveryFlowForJob(
   return outcome;
 }
 
+/**
+ * Runs the AI analysis runtime for a claimed ANALYSIS/REPROCESS job.
+ * Progress rows are written as the persistent job moves through its steps
+ * (ANALYSIS → EVIDENCE_VALIDATION → SCORING).
+ */
+export async function runAnalysisFlowForJob(
+  deps: WorkerDeps,
+  payload: Record<string, unknown>,
+  context: { tenantId: string; jobId: string; correlationId: string | null; jobType?: string },
+): Promise<AnalysisOutcome> {
+  const progress = (step: PipelineStep, percent: number): void => {
+    void deps.db
+      .query(
+        `UPDATE jobs SET current_step = $2::job_step, progress = $3, updated_at = now() WHERE id = $1`,
+        [context.jobId, step, percent],
+      )
+      .catch(() => undefined);
+  };
+  return runAnalysisForLead(
+    {
+      log: deps.log,
+      store: deps.analysisStore,
+      ai: deps.ai,
+      policy: deps.policy,
+      lifecycle: deps.orchestrator,
+      progress,
+    },
+    payload,
+    {
+      tenantId: context.tenantId,
+      jobId: context.jobId,
+      correlationId: context.correlationId,
+      ...(context.jobType !== undefined ? { jobType: context.jobType } : {}),
+    },
+  );
+}
+
 export async function startWorker(overrides: Partial<ReturnType<typeof loadEnv>> = {}): Promise<{
   worker: Worker;
   close(): Promise<void>;
@@ -173,9 +339,25 @@ export async function startWorker(overrides: Partial<ReturnType<typeof loadEnv>>
   const registry = buildConnectorRegistry();
   const redis = createRedisConnection(env.REDIS_URL);
 
+  // AI runtime: env-driven, provider-agnostic; fake never selected silently
+  // in production (selectAiRuntime returns NOT_CONFIGURED there).
+  const ai = selectAiRuntime(loadAiConfig());
+  if (ai.status !== 'READY') {
+    log.warn('AI runtime NOT_CONFIGURED — analysis jobs will fail honestly', {
+      reason: ai.reason ?? 'unknown',
+      missing: ai.missing.join(','),
+    });
+  } else {
+    log.info('AI runtime ready', { provider: ai.meta.provider, kind: ai.meta.kind, model: ai.meta.modelVersion });
+  }
+  const analysisStore = new DbAnalysisStore(db);
+  const policy = new DbScoringPolicyResolver(db);
+  const orchestrator = new DbOrchestrator({ db });
+  const deps: WorkerDeps = { env, log, db, registry, ai, analysisStore, policy, orchestrator };
+
   const worker = new Worker<{ jobId: string }>(
     'ulip-jobs',
-    (bull) => processJob({ env, log, db, registry }, bull),
+    (bull) => processJob(deps, bull),
     { connection: redis.connection as ConnectionOptions, concurrency: 2 },
   );
   worker.on('failed', (bull, err) => log.error('bull job failed', { bullJobId: bull?.id, error: err.message }));

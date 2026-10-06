@@ -4,8 +4,10 @@
  */
 
 import { ConnectorRegistry, ConfiguredHttpApiConnectorFactory, DeterministicFakeConnectorFactory } from '@ulip/discovery';
+import { DbOrchestrator } from '@ulip/orchestration';
 import { Database, JobQueue, loadEnv, Logger, type Env } from '@ulip/runtime';
 import {
+  AnalysisRepository,
   CampaignRepository,
   JobRepository,
   LeadRepository,
@@ -26,6 +28,10 @@ export interface AppContext {
   leads: LeadRepository;
   campaigns: CampaignRepository;
   jobs: JobRepository;
+  /** Read side of the AI analysis runtime (Phase 16). */
+  analysis: AnalysisRepository;
+  /** The ONLY writer of leads.status (ADR-016). */
+  orchestrator: DbOrchestrator;
   /** Redis/BullMQ transport for persistent jobs (transport ONLY, ADR-016). */
   queue: JobQueue;
   /** Connector factories for capability validation (Phase 15, ADR-027). */
@@ -54,6 +60,19 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
     leads: new LeadRepository(db),
     campaigns: new CampaignRepository(db),
     jobs: new JobRepository(db),
+    analysis: new AnalysisRepository(db),
+    orchestrator: new DbOrchestrator({
+      db,
+      enqueue: async (jobId: string) => {
+        try {
+          await queue.add({ jobId });
+          return { enqueued: true };
+        } catch {
+          // Redis down: the persisted job stays PENDING (DB is truth).
+          return { enqueued: false };
+        }
+      },
+    }),
     queue,
     connectorRegistry,
     async close(): Promise<void> {

@@ -51,3 +51,32 @@ The system may route a lead to different models based on:
 ## 8. Failure behavior
 
 A model failure does not automatically reject a lead. The system should record the failure and use a configured fallback/review path.
+
+## 9. Implemented runtime (Phase 16)
+
+Implementation: `blueprint/packages/ai/src/*` (contracts unchanged).
+
+- **Selection** — `selectAiRuntime(config, opts)` is the only place a provider
+  is chosen. Two honest states: `READY` or `NOT_CONFIGURED` (with the missing
+  environment keys). Nothing is ever fabricated in the NOT_CONFIGURED state.
+- **Configuration** (`loadAiConfig`, fail-fast): `AI_PROVIDER`
+  (`http` | `fake` | `none`), `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`,
+  `AI_TIMEOUT_MS` (default 30000), `AI_MAX_RETRIES` (default 2),
+  `AI_RETRY_BACKOFF_MS` (default 500), `AI_PROMPT_VERSION`, `AI_SCHEMA_VERSION`,
+  optional `AI_VISION_MODEL` / `AI_EMBEDDING_MODEL`. Production requires an
+  `https://` base URL.
+- **HTTP adapter** — `HttpLlmProvider` speaks OpenAI-compatible Chat
+  Completions against the configured base URL (no vendor hard-coded):
+  timeout, exponential backoff, Retry-After on 429, one sanitized retry when an
+  endpoint rejects `response_format`, and exactly one bounded contract-repair
+  attempt before `SCHEMA_VALIDATION_ERROR`.
+- **Optional slots** — `HttpVisionProvider` / `HttpEmbeddingProvider` exist but
+  stay `null` unless their model is configured; `DecisionProvider` (Jev) stays
+  optional and is never required (ADR-017).
+- **Deterministic fake** — `DeterministicFakeLlmProvider` for tests and local
+  E2E only: fixed keyword dictionaries, constant confidences, stable ordering.
+  It requires `AI_PROVIDER=fake` and is refused when `NODE_ENV=production`
+  without an explicit `allowFake` opt-in.
+- **Observability** — every run records `ai_runs` (provider, model, latency,
+  input/output hash, prompt/schema version, status) and the structured log
+  carries `jobId`/`tenantId`/`leadId`/`correlationId` end to end.

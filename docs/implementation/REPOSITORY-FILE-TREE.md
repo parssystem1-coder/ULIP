@@ -128,3 +128,47 @@ prompts/phases/PHASE-15-REAL-DISCOVERY.md      [I] phase spec
 
 Discovery status change: worker DISCOVERY flow upgraded [skeleton→implemented];
 `POST /discovery/search` + `GET /discovery/jobs/{id}` implemented per OPENAPI.
+
+## Phase 16 additions (AI analysis & scoring runtime — implemented)
+
+```text
+blueprint/
+├── packages/ai/src/           [I] @ulip/ai runtime added on top of the contracts:
+│     config.ts                [I] AiConfigSchema / loadAiConfig / missingCredentials
+│     errors.ts                [I] typed AiError hierarchy → orchestration ErrorCodes
+│     http.ts                  [I] injectable JSON transport (timeout/retry/backoff)
+│     http-llm.ts              [I] HttpLlmProvider (OpenAI-compatible, contract-repair)
+│     http-providers.ts        [I] optional HttpVisionProvider / HttpEmbeddingProvider
+│     fake.ts                  [I] DeterministicFakeLlmProvider (test/dev only)
+│     factory.ts               [I] selectAiRuntime → READY | NOT_CONFIGURED
+│     validation.ts            [I] validateExtractionOutput + enforceEvidenceFirst
+│     test/                    [I] config, HTTP adapter, fake determinism,
+│                               extraction validation + evidence-first demotion
+├── packages/analysis/         [I] @ulip/analysis — the analysis runtime:
+│     contracts.ts             [I] payload, store/policy/lifecycle ports, outcome
+│     ids.ts                   [I] deterministic analysis/score/evidence ids (retry-safe)
+│     evidence.ts              [I] evidence drafts from observed data (deterministic ids)
+│     taxonomy.ts              [I] taxonomy mapping (id/label/alias, kind-checked)
+│     dimensions.ts            [I] 4 score dimensions + structured reasons
+│     policy.ts                [I] DbScoringPolicyResolver + default bootstrap
+│     profile.ts               [I] universal model, classification drafts, summary
+│     load-context.ts          [I] tenant-scoped lead context loader
+│     store.ts                 [I] DbAnalysisStore (single transaction, current semantics)
+│     complete.ts              [I] scoring → persist → SCORED → THRESHOLD_MAP
+│     flow.ts                  [I] runAnalysisForLead + failure-policy mapping
+│     test/fakes.ts            [I] in-memory store/policy/lifecycle doubles
+│     test/                     [I] flow/dimensions/taxonomy/evidence tests
+│     test/integration.analysis-db.test.ts  [I] real PostgreSQL coverage
+├── packages/orchestration/src/db-orchestrator.ts  [I] implemented Orchestrator
+├── apps/worker/src/main.ts    [I] ANALYSIS/REPROCESS flows + FAILURE_POLICY handling
+└── apps/api/                  [I] lead/analysis/evidence/scores/reprocess endpoints
+      test/integration.analysis.test.ts     [I] full-stack E2E
+
+docs/adr/ADR-028-ai-analysis-scoring-runtime.md   [I] runtime decisions
+prompts/phases/PHASE-16-AI-ANALYSIS-SCORING.md    [I] phase spec
+docs/api/OPENAPI.yaml                              [I] /leads/{leadId}/analysis
+```
+
+Analysis status change: ANALYSIS/REPROCESS job types upgraded [stub→implemented];
+`GET /leads/{id}(/analysis|/evidence|/scores)` + `POST /leads/{id}/reprocess`
+implemented per OPENAPI.

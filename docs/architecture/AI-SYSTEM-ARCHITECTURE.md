@@ -96,3 +96,32 @@ An unsupported prediction should carry reduced confidence and may be routed to r
 ## 7. Model replacement
 
 Adding or removing a provider must not change Lead/Taxonomy/Scoring domain models. Model routing belongs in infrastructure/application layers.
+
+## 8. Implemented runtime (Phase 16, ADR-028)
+
+Everything above is now connected end to end by `@ulip/ai` + `@ulip/analysis`:
+
+```text
+ANALYSIS_PENDING
+  → job (DB truth, BullMQ transport) → worker
+  → selectAiRuntime()          READY | NOT_CONFIGURED (fail-fast, never silent)
+  → buildEvidenceDrafts()      observed facts only, persisted first
+  → LLM extractStructuredProfile()   (HTTP OpenAI-compatible adapter, or fake in tests)
+  → validateExtractionOutput() + enforceEvidenceFirst()
+  → taxonomy mapping onto existing node ids
+  → computeDimensions() on the persisted ACTIVE scoring policy
+  → DbAnalysisStore           one transaction, one current analysis + score
+  → orchestrator applyLeadEvent  SCORED → QUALIFIED | REVIEW_REQUIRED | REJECTED
+```
+
+- **Provider-agnostic:** the adapter is configured by `AI_PROVIDER`,
+  `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_TIMEOUT_MS`,
+  `AI_MAX_RETRIES`, `AI_RETRY_BACKOFF_MS`; no vendor constant exists in code.
+- **Honest states only:** without credentials the runtime reports
+  `NOT_CONFIGURED` listing the missing keys; the deterministic fake is
+  selectable only explicitly and is refused under `NODE_ENV=production`
+  without `allowFake`.
+- **Jev stays unplugged:** `DecisionProvider` remains an optional slot;
+  `RULES_ONLY` and `LLM_ONLY` strategies work with no decision provider.
+- **Model replacement** therefore stays an infrastructure concern: swapping the
+  base URL/model changes `ai_runs.model_version`, nothing in domain or scoring.

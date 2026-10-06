@@ -96,3 +96,38 @@ failure is handled at process level by supervisor + alerting.)
 
 `progress` (0–100) is step-weighted per job type and updated via PROGRESS
 job_events; API `GET /discovery/jobs/{id}` reads the DB row, never Redis.
+
+## 7. Implemented runtime (Phase 16)
+
+Implementation: `blueprint/packages/orchestration/src/db-orchestrator.ts`
+(`DbOrchestrator`), used by the API (trigger/reprocess) and by the analysis
+runtime (every lifecycle move). It is the only writer of `leads.status`.
+
+- `startAnalysis` / `reprocess` / `resume` persist the job row first, then
+  enqueue (injected transport callback; Redis down ⇒ row stays PENDING).
+  An already-active ANALYSIS/REPROCESS job for the lead is reused instead of
+  duplicated (domain-level idempotency).
+- `applyLeadEvent({ leadId, tenantId?, event, expectedFrom, to? })` validates
+  against `LEAD_TRANSITION_TABLE`, applies a conditional UPDATE on
+  `expectedFrom` (+ tenant) and treats an already-applied move as success.
+  `to` is required when a (from, event) pair has several targets
+  (`THRESHOLD_MAP`).
+- `cancel(jobId)` is cooperative: a PENDING job becomes CANCELLED; a RUNNING
+  job receives a `CANCEL_REQUESTED` event and finishes at a step boundary.
+
+Worker behaviour for ANALYSIS/REPROCESS jobs (ADR-016 failure table):
+
+| Situation | Job row | Lead |
+|---|---|---|
+| `RETRY` and attempts remain | back to `PENDING` + `run_after`, `job_attempts` RETRYABLE_FAILURE, `RETRY_SCHEDULED`, delayed re-enqueue | stays `ANALYZING` (resumed on retry) |
+| `RETRY` exhausted | `FAILED` + FATAL_FAILURE attempt | `ANALYSIS_FAILED` → `FAILED` |
+| `REVIEW` (AI_UNAVAILABLE) | `FAILED` with `AI_UNAVAILABLE` | `ANALYSIS_FAILED` → `REVIEW_REQUIRED` |
+| `TERMINAL_FAIL` (INVALID_DATA) | `FAILED` | `ANALYSIS_FAILED` → `FAILED` |
+| `FALLBACK` (AI_PROVIDER_ERROR) | rules-only analysis, labelled `rules:fallback` | normal success path |
+| Not applicable to the lead state | `SKIPPED` + reason | unchanged |
+| NOT_CONFIGURED (no AI credentials) | `FAILED` with `AI_UNAVAILABLE` + `NOT_CONFIGURED` detail | unchanged (still `ANALYSIS_PENDING`) |
+
+`run_after` is the policy-derived advisory timestamp; BullMQ drives the actual
+retry timing (DB stays the source of truth for status/attempts).
+`progress` for analysis jobs moves `ANALYSIS` (15) → `EVIDENCE_VALIDATION`
+(45/65) → `SCORING` (100).

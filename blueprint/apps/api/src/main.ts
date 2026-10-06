@@ -18,6 +18,10 @@ import {
   createTaxonomy,
   getDiscoveryJob,
   getJob,
+  getLead,
+  getLeadAnalysis,
+  getLeadEvidence,
+  getLeadScores,
   healthHandler,
   listCampaigns,
   listJobs,
@@ -25,6 +29,7 @@ import {
   listSources,
   listTaxonomy,
   readyHandler,
+  reprocessLead,
 } from './controllers.ts';
 import { readJsonBody, readQuery } from './http.ts';
 import { pipeline, Router } from './middleware.ts';
@@ -48,6 +53,13 @@ export async function createApiServer(app: AppContext): Promise<Server> {
   // leads
   router.add('GET', '/leads', listLeads(app));
   router.add('POST', '/leads', createLead(app));
+
+  // lead analysis (Phase 16, ADR-028) — OPENAPI.yaml /leads/{leadId}/...
+  router.add('GET', '/leads/:leadId', getLead(app));
+  router.add('GET', '/leads/:leadId/analysis', getLeadAnalysis(app));
+  router.add('GET', '/leads/:leadId/evidence', getLeadEvidence(app));
+  router.add('GET', '/leads/:leadId/scores', getLeadScores(app));
+  router.add('POST', '/leads/:leadId/reprocess', reprocessLead(app));
 
   // campaigns
   router.add('GET', '/campaigns', listCampaigns(app));
