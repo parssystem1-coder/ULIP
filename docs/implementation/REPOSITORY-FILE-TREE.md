@@ -197,3 +197,25 @@ packages/eval + apps/api deps   [I] @ulip/eval workspace link
 Docs: ADR-029, PHASE-17 prompt, DATABASE.md §29, API.md §9,
 EVALUATION-AND-BENCHMARKING.md status block.
 ```
+
+Phase 18 additions (ADR-030):
+```text
+database/migrations/0005_content_intelligence/  [I] content types + content_analyses + items + eval arms
+database/schema/schema.sql                      [I] snapshot synced with 0005
+packages/ai/src/fake-vision.ts                  [I] DeterministicFakeVisionProvider (dev/E2E)
+packages/analysis/src/content.ts                [I] normalization, hashtags/topics, modality availability
+packages/analysis/src/sampling.ts               [I] RECENCY_DIVERSITY_SIGNAL (BASIC/STANDARD/DEEP)
+packages/analysis/src/intel.ts                  [I] aggregation, consistency, relevance, activity signals
+packages/analysis/src/multimodal.ts             [I] vision plan/step + IMAGE_OBSERVATION evidence
+packages/analysis/src/{flow,complete,store,contracts,dimensions}.ts  [I] Phase 18 wiring
+packages/analysis/test/content-intelligence.test.ts + flow-content.test.ts  [I] unit/flow coverage
+packages/discovery/src/content.ts               [I] DbContentIngestor (posts/media → lead_contents)
+packages/discovery/test/content-ingestion.test.ts  [I] parsing/idempotency coverage
+packages/eval: + 4 content arms (PROFILE_ONLY / TEXT_CONTENT / TEXT_IMAGE / FULL_AVAILABLE_EVIDENCE) + baselines
+apps/api: GET /leads/{id}/contents + /content-analysis (+ history)
+docs/api/OPENAPI.yaml                            [I] LeadContent/ContentAnalysis* schemas
+```
+
+Docs: ADR-030, PHASE-18 prompt, README §Phase 18, IMPLEMENTATION-PLAN §Phase 18,
+AI.md, EVALUATION-AND-BENCHMARKING.md, DATABASE.md, API.md.
+```

@@ -115,6 +115,8 @@ export async function runTestDiscovery(
     sources: SourceLookup;
     rawEntities: RawEntityStore;
     resolver: EntityResolver;
+    /** Phase 18 content ingestion (optional; skips when absent). */
+    contentIngestor?: import('../src/content.ts').ContentIngestor | undefined;
     log?: { info(msg: string, fields?: Record<string, unknown>): void; error(msg: string, fields?: Record<string, unknown>): void };
   },
   payload: DiscoveryJobPayload | Record<string, unknown>,
@@ -131,6 +133,7 @@ export async function runTestDiscovery(
       normalizer: new PersianAwareNormalizer(),
       resolver: deps.resolver,
       connectorRegistry: registry,
+      ...(deps.contentIngestor !== undefined ? { contentIngestor: deps.contentIngestor } : {}),
     },
     payload,
     context,

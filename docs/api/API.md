@@ -569,6 +569,27 @@ GET  /outreach/campaigns/{id}/report       پیشرفت + گزارش ارسال
 هر تغییری اول در OPENAPI اعمال می‌شود، سپس این سند سینک می‌شود. تست‌های contract
 برای OpenAPI نوشته می‌شوند، نه برای این فایل.
 
+## Content intelligence (Phase 18, ADR-030)
+
+```http
+GET /api/v1/leads/{leadId}/contents
+GET /api/v1/leads/{leadId}/content-analysis
+GET /api/v1/leads/{leadId}/content-analysis?history=1
+```
+
+- `contents` lists the lead's ingested content items (lead_contents) with type,
+  caption, media reference, publication time, content hash and available
+  engagement signals.
+- `content-analysis` returns the current versioned content intelligence:
+  deterministic sampling (strategy + per-item selection reasons),
+  profile-vs-content consistency, content-derived activity signals, aggregated
+  content relevance, structured review reasons and the per-item breakdown
+  (which modalities were analyzed — missing modalities are recorded, never
+  fabricated). `?history=1` lists superseded versions; history is never deleted.
+
+Schemas live in `docs/api/OPENAPI.yaml` (LeadContent, ContentAnalysis,
+ContentAnalysisItem, ContentAnalysisVersion, ProfileContentConsistency).
+
 ## Idempotency
 
 هر POST قابل‌تکرار (`/sources`, `/discovery/jobs`, `/reprocessing`, `/exports`) باید

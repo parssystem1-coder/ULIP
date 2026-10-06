@@ -4,6 +4,7 @@
  * Discovery = provider-agnostic ingestion through an authorized source
  * connector: Raw Entity → Raw Snapshot persistence → Normalization →
  * Deduplication / Entity Resolution → Lead creation/update → ANALYSIS_PENDING.
+ * Phase 18 adds Content ingestion from the same authorized payloads.
  *
  * Honesty rules (ADR-027):
  *  - A connector is resolved ONLY when the source row exists and a registered
@@ -20,6 +21,7 @@ import type {
   LeadSourceConnector,
   SourceMetadata,
 } from '@ulip/connectors';
+import type { ContentIngestor } from './content.ts';
 
 export type ConnectorResolutionStatus =
   | 'RESOLVED'
@@ -124,6 +126,8 @@ export interface DiscoveryFlowResult {
   updated: number;
   /** raw_entities rows persisted during this run. */
   rawPersisted: number;
+  /** Phase 18: NEW lead_contents rows persisted from payload posts/media. */
+  contentsIngested: number;
 }
 
 export interface DiscoveryFlowDeps {
@@ -133,6 +137,8 @@ export interface DiscoveryFlowDeps {
   normalizer: Normalizer;
   resolver: EntityResolver;
   connectorRegistry: ConnectorRegistry;
+  /** Phase 18 content ingestion (absent on legacy callers → skipped). */
+  contentIngestor?: ContentIngestor | undefined;
 }
 
 export interface DiscoveryJobPayload {

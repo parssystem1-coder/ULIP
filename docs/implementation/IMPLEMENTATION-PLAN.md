@@ -152,6 +152,47 @@ export; `pnpm eval` comparing every run against committed baselines with a
 CRITICAL/MAJOR regression release gate; read-side `/evaluation/*` API.
 Live-provider evaluation is explicitly gated (`ULIP_EVAL_LIVE=1`).
 
+## Phase 18 — Instagram Content Intelligence & Multimodal Analysis (implemented)
+
+Content is now a first-class analysis input (ADR-030), not an optional string
+attached to the bio:
+
+- **Ingestion** — discovery parses connector payload `posts`/`media`/`contents`
+  arrays (`DbContentIngestor`) into `lead_contents` with Instagram-style types
+  (POST/REEL/CAROUSEL added to the CHECK), deterministic ids, sha256 content
+  hash; idempotent, historical content never overwritten.
+- **Sampling** — deterministic `RECENCY_DIVERSITY_SIGNAL` sampler (BASIC 3 /
+  STANDARD 8 / DEEP 16) over recency → type diversity → high-signal →
+  representative (repeated topics) → only-available, with per-item selection
+  reasons and recorded skips.
+- **Multimodal** — text analysis via the existing LLM extraction; Vision via the
+  `AiRuntime` vision slot for a budget-capped selection of media items
+  (BASIC 0 / STANDARD 2 / DEEP 4); unavailable/missing/failing modalities are
+  recorded explicitly (`VISION_UNAVAILABLE`, `MODALITY_UNAVAILABLE`,
+  `METADATA_ONLY`), never fabricated; video stays metadata-only.
+- **Evidence aggregation** — every sampled item cites its `lead_contents/{id}`
+  CAPTION_TEXT row; analyzed images cite IMAGE_OBSERVATION rows; keyword
+  signals (BT_*/CI_*) carry per-item evidence ids, repeated independent hits
+  raise confidence; content folds into confidence/activity/relevance without
+  replacing the Phase 16 score architecture.
+- **Consistency + review reasons** — profile-vs-content consistency
+  (AGREE/PARTIAL/CONFLICT/INSUFFICIENT_CONTENT); conflicts demote confidence and
+  force QUALIFIED → REVIEW_REQUIRED; structured review reasons
+  (PROFILE_CONTENT_CONFLICT, INSUFFICIENT_CONTENT, WEAK_EVIDENCE,
+  MODALITY_UNAVAILABLE, TAXONOMY_AMBIGUITY) persisted on content_analyses.
+- **Persistence** — migration `0005_content_intelligence`:
+  `content_analyses` (versioned, is_current/superseded_at, sampling JSONB,
+  consistency, activity signals, relevance, review reasons) +
+  `content_analysis_items` (per-item modalities/relevance/topics);
+  deterministic ids → idempotent replay; evaluation_runs.arm widened with the
+  four content arms.
+- **API** — `GET /leads/{id}/contents`, `GET /leads/{id}/content-analysis`
+  (+ `?history=1`), OpenAPI schemas synced.
+- **Eval** — PROFILE_ONLY / TEXT_CONTENT / TEXT_IMAGE /
+  FULL_AVAILABLE_EVIDENCE arms with committed baselines (fake vision provider
+  `fake-vision.ts` for determinism; real vision honestly gated on
+  AI_VISION_MODEL).
+
 ## Phase 16 — AI Analysis & Scoring Runtime (implemented)
 
 The AI contracts are now connected to the real pipeline (ADR-028):

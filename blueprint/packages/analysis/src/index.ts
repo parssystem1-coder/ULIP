@@ -9,3 +9,7 @@ export * from './load-context.ts';
 export * from './store.ts';
 export * from './complete.ts';
 export * from './flow.ts';
+export * from './content.ts';
+export * from './sampling.ts';
+export * from './intel.ts';
+export * from './multimodal.ts';

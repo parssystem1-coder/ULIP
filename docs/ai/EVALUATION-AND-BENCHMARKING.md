@@ -84,3 +84,30 @@ degradations fail the gate; MINOR (>0.02) degradations are reported. Jev arms
 are recorded `NOT_CONFIGURED` until a real DecisionProvider exists.
 
 **Jev-specific rule (ADR-017):** Jev must not be described or promoted as accuracy-improving until a measured benchmark shows it beats the LLM-only arm on the frozen dataset at acceptable cost and review rate.
+
+## 8. Content & multimodal arms (Phase 18, ADR-030)
+
+Four comparison arms quantify how much content evidence contributes over the
+profile-only floor (same dataset, same labels, same scoring policy):
+
+| Arm | Evidence visible |
+| --- | --- |
+| `PROFILE_ONLY` | profile text only (no content at all) |
+| `TEXT_CONTENT` | profile + sampled captions (STANDARD budget) |
+| `TEXT_IMAGE` | TEXT_CONTENT + budget-capped Vision step (2 images) |
+| `FULL_AVAILABLE_EVIDENCE` | everything available (DEEP budget, 4 images) |
+
+Arms run through the REAL production pipeline pieces: `sampleContents` over the
+case contents, `buildContentEvidenceDrafts`, `planVision`/`runVisionStep` (the
+same `VisionProvider` slot the worker uses), then the same LLM extraction and
+`@ulip/scoring` policy evaluation as the Phase 17 arms. `TEXT_IMAGE` and
+`FULL_AVAILABLE_EVIDENCE` require a VisionProvider; without one they are
+recorded `NOT_CONFIGURED` with zero cases — never fabricated. Baselines for all
+arms are committed (`packages/eval/baselines/baseline-*.json`) and enforced by
+the same CRITICAL/MAJOR regression gate.
+
+Measured on dataset v1.0.0 with the deterministic fake providers (34 cases):
+PROFILE_ONLY macroF1 ≈ 0.797 (coverage 0.72) vs TEXT_CONTENT / TEXT_IMAGE /
+FULL_AVAILABLE_EVIDENCE macroF1 ≈ 0.804 (coverage 0.752) — adding content
+raises coverage and abstention drops accordingly; exact numbers are stamped in
+the committed baselines for regression comparison.

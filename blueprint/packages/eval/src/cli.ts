@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Database } from '@ulip/runtime';
 import { selectAiRuntime, loadAiConfig } from '@ulip/ai';
-import type { LLMProvider } from '@ulip/ai';
+import type { LLMProvider, VisionProvider } from '@ulip/ai';
 import type { EvalArmId, EvalRunRecord } from './contracts.ts';
 import { EVAL_ARM_IDS } from './contracts.ts';
 import { loadDefaultDataset } from './dataset.ts';
@@ -76,6 +76,23 @@ function resolveProvider(): { llm: LLMProvider | null; source: string } {
   return { llm: null, source: 'none' };
 }
 
+/**
+ * Vision provider for the multimodal arms (Phase 18). Same explicitness as
+ * the LLM: the configured runtime slot when READY, otherwise the deterministic
+ * fake vision provider — real HTTP vision is only selected for live runs.
+ */
+function resolveVisionProvider(): { vision: VisionProvider | null; source: string } {
+  const runtime = selectAiRuntime(loadAiConfig(process.env));
+  if (runtime.status === 'READY' && runtime.vision !== null) {
+    return { vision: runtime.vision, source: `${runtime.meta.provider} vision slot` };
+  }
+  const fake = selectAiRuntime(loadAiConfig({ ...process.env, AI_PROVIDER: 'fake', NODE_ENV: 'test' }), { allowFake: true });
+  if (fake.status === 'READY' && fake.vision !== null) {
+    return { vision: fake.vision, source: 'deterministic fake vision provider' };
+  }
+  return { vision: null, source: 'none' };
+}
+
 function baselinePath(arm: string): string {
   return join(BASELINE_DIR, `baseline-${arm.toLowerCase()}-v1.json`);
 }
@@ -119,7 +136,10 @@ async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
   const dataset = loadDefaultDataset();
   const { llm, source } = resolveProvider();
-  console.log(`eval: dataset ${dataset.datasetVersion} (${dataset.cases.length} cases), provider: ${source}`);
+  const { vision, source: visionSource } = resolveVisionProvider();
+  console.log(
+    `eval: dataset ${dataset.datasetVersion} (${dataset.cases.length} cases), provider: ${source}, vision: ${visionSource}`,
+  );
 
   const arms = args.arm !== undefined ? [args.arm as EvalArmId] : [...EVAL_ARM_IDS];
   for (const arm of arms) {
@@ -133,7 +153,7 @@ async function main(): Promise<number> {
   let blocked = false;
 
   for (const arm of arms) {
-    const { record: run, results } = await runEvaluationDetailed({ dataset, arm, llm });
+    const { record: run, results } = await runEvaluationDetailed({ dataset, arm, llm, vision });
     console.log('');
     console.log(summarizeRun(run));
     if (run.armStatus === 'EXECUTED') {

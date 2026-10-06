@@ -505,6 +505,87 @@ export function getLeadEvidence(app: AppContext) {
   };
 }
 
+// --------------------------------------------------- content intelligence (Phase 18)
+
+/** GET /leads/:leadId/contents — first-class analyzed content (read side). */
+export function getLeadContents(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const limitRaw = Number(ctx.query.get('limit') ?? '50');
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+    const rows = await app.analysis.listContents(tenantId, leadId, limit);
+    jsonReply(ctx, 200, {
+      data: rows.map((c) => {
+        const meta = (c['metadata'] ?? {}) as Record<string, unknown>;
+        return {
+          id: c['id'],
+          sourceContentId: c['sourceContentId'],
+          contentType: c['contentType'],
+          text: c['text'],
+          mediaUrl: c['mediaUrl'],
+          publishedAt: c['publishedAt'],
+          contentHash: c['contentHash'],
+          retrievedAt: c['retrievedAt'],
+          engagement: {
+            likes: meta['likes'] ?? null,
+            comments: meta['comments'] ?? null,
+            views: meta['views'] ?? null,
+          },
+        };
+      }),
+    });
+  };
+}
+
+/**
+ * GET /leads/:leadId/content-analysis — the current content-intelligence
+ * result: sampling, consistency, activity, relevance, review reasons and the
+ * per-item breakdown. Historical versions: ?history=1 (never deleted).
+ */
+export function getLeadContentAnalysis(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const leadId = leadIdOf(ctx);
+    if (leadId === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+    const tenantId = ctx.principal.tenantId;
+    const lead = await app.analysis.findLead(tenantId, leadId);
+    if (lead === null) return errorReply(ctx, 404, 'NOT_FOUND', 'lead not found in tenant');
+
+    if (ctx.query.get('history') === '1') {
+      const versions = await app.analysis.listContentAnalyses(tenantId, leadId);
+      return jsonReply(ctx, 200, { data: versions });
+    }
+
+    const ca = await app.analysis.currentContentAnalysis(tenantId, leadId);
+    if (ca === null) {
+      return errorReply(ctx, 404, 'NOT_FOUND', 'no content analysis recorded for this lead', {
+        status: lead.status,
+      });
+    }
+    const items = await app.analysis.listContentAnalysisItems(tenantId, String(ca['id']));
+    jsonReply(ctx, 200, {
+      id: ca['id'],
+      analysisId: ca['analysisId'],
+      analysisVersion: ca['analysisVersion'],
+      analysisMode: ca['analysisMode'],
+      sampling: ca['sampling'],
+      profileContentConsistency: ca['profileContentConsistency'],
+      consistencyConfidence: ca['consistencyConfidence'] === null ? null : Number(ca['consistencyConfidence']),
+      activitySignals: ca['activitySignals'],
+      contentRelevance: ca['contentRelevance'] === null ? null : Number(ca['contentRelevance']),
+      relevanceCriteria: ca['relevanceCriteria'],
+      reviewReasons: ca['reviewReasons'],
+      summary: ca['summary'],
+      isCurrent: ca['isCurrent'],
+      items,
+      createdAt: ca['createdAt'],
+    });
+  };
+}
+
 export function getLeadScores(app: AppContext) {
   return async (ctx: AuthenticatedContext): Promise<void> => {
     const leadId = leadIdOf(ctx);

@@ -27,6 +27,7 @@ import type { FetchLike } from './http.ts';
 import { HttpLlmProvider } from './http-llm.ts';
 import { HttpEmbeddingProvider, HttpVisionProvider } from './http-providers.ts';
 import { DeterministicFakeLlmProvider } from './fake.ts';
+import { DeterministicFakeVisionProvider } from './fake-vision.ts';
 
 export type AiRuntimeStatus = 'READY' | 'NOT_CONFIGURED';
 
@@ -98,11 +99,14 @@ export function selectAiRuntime(
       );
     }
     const llm = new DeterministicFakeLlmProvider(providerName, 'fake-1');
+    // Phase 18: the fake runtime ALSO carries the deterministic fake vision
+    // slot so local E2E can exercise the multimodal path without credentials.
+    const vision = new DeterministicFakeVisionProvider(`${providerName}:vision`, 'fake-vision-1');
     return {
       status: 'READY',
       missing: [],
       llm,
-      vision: null,
+      vision,
       embedding: null,
       decision: options.decision ?? null,
       meta: { ...baseMeta, kind: 'FAKE', modelVersion: 'fake-1' },

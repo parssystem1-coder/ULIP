@@ -10,8 +10,23 @@
  */
 
 import { deterministicUuid, BOOTSTRAP_SCORING_POLICY } from '@ulip/analysis';
-import { buildEvidenceDrafts, evidenceSamples, profileText } from '@ulip/analysis';
-import type { LeadContext } from '@ulip/analysis';
+import {
+  aggregateSignals,
+  buildEvidenceDrafts,
+  buildImageObservationDrafts,
+  computeActivitySignals,
+  computeConsistency,
+  computeContentRelevance,
+  normalizeContents,
+  planVision,
+  profileTopicTerms,
+  runVisionStep,
+  sampleContents,
+  evidenceSamples,
+  profileText,
+} from '@ulip/analysis';
+import type { EvidenceDraft, LeadContext } from '@ulip/analysis';
+import type { VisionProvider } from '@ulip/ai';
 import type {
   Availability,
 } from '@ulip/domain/contracts';
@@ -61,6 +76,8 @@ import {
   type Prediction,
   type RulesTable,
 } from './arms.ts';
+import { buildContentEvidenceDrafts } from '@ulip/analysis';
+import type { MultimodalRunResult } from '@ulip/analysis';
 import { classifyError, errorDetail, refineWithTaxonomyContext } from './errors.ts';
 import { aggregateRunMetrics } from './metrics.ts';
 
@@ -102,6 +119,8 @@ export interface EvalRunnerOptions {
   arm: EvalArmId;
   /** LLM provider under test (fake, mocked HTTP, or live); null = unavailable. */
   llm: LLMProvider | null;
+  /** Optional VisionProvider for the multimodal arms (TEXT_IMAGE / FULL). */
+  vision?: VisionProvider | null | undefined;
   /** Optional Jev/DecisionProvider — the runner never instantiates one. */
   decision?: DecisionProvider | undefined;
   tenantId?: string | undefined;
@@ -109,6 +128,21 @@ export interface EvalRunnerOptions {
   /** Clock injection for tests; defaults to wall clock (latency only). */
   now?: (() => Date) | undefined;
 }
+
+/**
+ * Phase 18 content arms. Each arm sees progressively more of the evidence the
+ * production flow would have (same dataset, same labels, same scoring):
+ *   PROFILE_ONLY            → profile text only (BASIC, no content at all)
+ *   TEXT_CONTENT            → profile + sampled captions (STANDARD)
+ *   TEXT_IMAGE              → TEXT_CONTENT + budget-capped vision step
+ *   FULL_AVAILABLE_EVIDENCE → everything available (DEEP, widest sample)
+ */
+const CONTENT_ARM_MODE: Partial<Record<EvalArmId, 'BASIC' | 'STANDARD' | 'DEEP'>> = {
+  PROFILE_ONLY: 'BASIC',
+  TEXT_CONTENT: 'STANDARD',
+  TEXT_IMAGE: 'STANDARD',
+  FULL_AVAILABLE_EVIDENCE: 'DEEP',
+};
 
 interface LlmMeta {
   provider: string;
@@ -128,7 +162,12 @@ const RULES_VERSIONS = {
 // Lead context synthesis (mirrors analysis.loadContext, from dataset facts)
 // ---------------------------------------------------------------------------
 
-function leadContextFor(caseItem: EvalCase, dataset: EvalDataset, now: Date): LeadContext {
+function leadContextFor(
+  caseItem: EvalCase,
+  dataset: EvalDataset,
+  now: Date,
+  mode: 'BASIC' | 'STANDARD' | 'DEEP' = 'STANDARD',
+): LeadContext {
   const caseId = caseItem.caseId;
   const leadId = deterministicUuid('eval-lead', caseId);
   const businessId = deterministicUuid('eval-business', caseId);
@@ -137,7 +176,14 @@ function leadContextFor(caseItem: EvalCase, dataset: EvalDataset, now: Date): Le
   const rawId = deterministicUuid('eval-raw', caseId);
   const collectedAt = now.toISOString();
 
-  const contents: LeadContext['contents'] = (caseItem.input.posts ?? []).map((p, i) => ({
+  // Arm-aware content visibility: PROFILE_ONLY sees NO content at all (raw
+  // payload included), STANDARD mirrors the production 8-item budget, DEEP
+  // exposes everything — mirroring the production sampling budgets.
+  const allPosts = caseItem.input.posts ?? [];
+  const visibleCount = mode === 'BASIC' ? 0 : mode === 'DEEP' ? allPosts.length : Math.min(allPosts.length, 8);
+  const visiblePosts = allPosts.slice(0, visibleCount);
+
+  const contents: LeadContext['contents'] = visiblePosts.map((p, i) => ({
     id: deterministicUuid('eval-content', caseId, String(i)),
     contentType: 'POST',
     text: p.text,
@@ -173,8 +219,8 @@ function leadContextFor(caseItem: EvalCase, dataset: EvalDataset, now: Date): Le
   if (caseItem.input.followers !== undefined) payload['followers_count'] = caseItem.input.followers;
   if (caseItem.input.postsCount !== undefined) payload['posts_count'] = caseItem.input.postsCount;
   if (caseItem.input.categories !== undefined) payload['category'] = caseItem.input.categories.join(', ');
-  if (caseItem.input.posts !== undefined) {
-    payload['posts'] = caseItem.input.posts.map((p) => ({ text: p.text }));
+  if (caseItem.input.posts !== undefined && visibleCount > 0) {
+    payload['posts'] = visiblePosts.map((p) => ({ text: p.text }));
   }
 
   return {
@@ -182,7 +228,7 @@ function leadContextFor(caseItem: EvalCase, dataset: EvalDataset, now: Date): Le
     tenantId: deterministicUuid('eval-tenant', caseId),
     businessId,
     status: 'ANALYZING' as ProcessingStage,
-    analysisMode: 'STANDARD',
+    analysisMode: mode,
     business: {
       canonicalName: caseItem.input.name,
       description: caseItem.input.bio ?? null,
@@ -364,6 +410,10 @@ export async function runEvaluationDetailed(options: EvalRunnerOptions): Promise
 
   const needsLlm = arm !== 'RULES_ONLY';
   const needsDecision = arm === 'LLM_THEN_DECISION_PROVIDER' || arm === 'RULES_LLM_DECISION_PROVIDER';
+  const isContentArm = arm in CONTENT_ARM_MODE;
+  const contentMode = CONTENT_ARM_MODE[arm] ?? 'STANDARD';
+  const wantsVision = arm === 'TEXT_IMAGE' || arm === 'FULL_AVAILABLE_EVIDENCE';
+  const vision = options.vision ?? null;
 
   const llmMeta: LlmMeta = options.llm === null
     ? RULES_VERSIONS
@@ -395,6 +445,16 @@ export async function runEvaluationDetailed(options: EvalRunnerOptions): Promise
   if (needsDecision && !decisionReady) {
     return { record: notConfiguredRecord(runId, versions, arm, 'DecisionProvider (Jev) required for this arm', startedAt, now), results: [] };
   }
+  if (wantsVision && vision === null) {
+    return {
+      record: notConfiguredRecord(
+        runId, versions, arm,
+        'VisionProvider required for this arm — configure AI_VISION_MODEL (honest gate, never fabricated)',
+        startedAt, now,
+      ),
+      results: [],
+    };
+  }
 
   const rulesTable: RulesTable = {
     taxonomyAliases: dataset.taxonomyAliases,
@@ -409,11 +469,37 @@ export async function runEvaluationDetailed(options: EvalRunnerOptions): Promise
   let armFailure: string | null = null;
 
   for (const caseItem of dataset.cases) {
-    const ctx = leadContextFor(caseItem, dataset, now());
-    const drafts = buildEvidenceDrafts(ctx.leadId, deterministicUuid('eval-analysis', caseItem.caseId), ctx, now());
+    const ctx = leadContextFor(caseItem, dataset, now(), contentMode);
+    const analysisId = deterministicUuid('eval-analysis', caseItem.caseId);
+    let drafts: EvidenceDraft[] = buildEvidenceDrafts(ctx.leadId, analysisId, ctx, now());
+
+    // Phase 18 arms: real sampling over the (arm-scoped) content, then the
+    // same cost-capped vision step the production flow uses.
+    let multimodal: MultimodalRunResult | null = null;
+    let imageDrafts: EvidenceDraft[] = [];
+    if (isContentArm) {
+      const sampled = sampleContents(normalizeContents(ctx.contents), contentMode, now());
+      const sampledSet = new Set(sampled.selected.map((s) => s.content.contentId));
+      const sampledDrafts = buildContentEvidenceDrafts(ctx.leadId, analysisId, sampled.selected);
+      // Keep only sampled content rows — the arm sees exactly what production sees.
+      drafts = [
+        ...drafts.filter((d) => !d.sourceReference.startsWith('lead_contents/')),
+        ...sampledDrafts,
+      ];
+      if (wantsVision) {
+        const plan = planVision(vision, contentMode, sampled.selected);
+        multimodal = await runVisionStep(vision, plan, sampled.selected, profileText(drafts));
+        imageDrafts = buildImageObservationDrafts(ctx.leadId, analysisId, multimodal, now());
+        drafts = [...drafts, ...imageDrafts];
+      }
+      void sampledSet;
+    }
+
     const input = buildExtractionInput(caseItem);
     const extractionInput = {
       ...input,
+      // Content arms see ONLY the sampled evidence; other arms keep the
+      // Phase 17 behavior (all drafts, unchanged baselines).
       contentSamples: evidenceSamples(drafts),
       profileText: profileText(drafts),
       taxonomySnapshot: dataset.taxonomySnapshot,
@@ -434,7 +520,12 @@ export async function runEvaluationDetailed(options: EvalRunnerOptions): Promise
       let finalAnswer: ArmAnswer;
       if (arm === 'RULES_ONLY') {
         finalAnswer = rulesAnswer;
-      } else if (arm === 'LLM_ONLY') {
+      } else if (
+        arm === 'LLM_ONLY' || arm === 'PROFILE_ONLY' || arm === 'TEXT_CONTENT' ||
+        arm === 'TEXT_IMAGE' || arm === 'FULL_AVAILABLE_EVIDENCE'
+      ) {
+        // Phase 18 arms are LLM-extraction arms over arm-scoped evidence
+        // (no Jev refinement — that stays a Phase 17 decision-provider arm).
         finalAnswer = llmAnswer;
       } else if (arm === 'RULES_THEN_LLM') {
         finalAnswer = mergeRulesThenLlm(llmAnswer, rulesAnswer);

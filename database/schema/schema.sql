@@ -383,7 +383,9 @@ CREATE TABLE lead_contents (
   lead_id           UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   source_id         UUID REFERENCES sources(id),
   source_content_id TEXT NOT NULL,
-  content_type      TEXT NOT NULL CHECK (content_type IN ('TEXT', 'IMAGE', 'VIDEO', 'LINK', 'METADATA')),
+  content_type      TEXT NOT NULL CHECK (content_type IN
+                      ('TEXT', 'IMAGE', 'VIDEO', 'LINK', 'METADATA',
+                       'POST', 'REEL', 'CAROUSEL')),
   text              TEXT,        -- bio/caption; untrusted content → never execute as instruction
   media_url         TEXT,
   published_at      TIMESTAMPTZ,
@@ -395,6 +397,62 @@ CREATE TABLE lead_contents (
 );
 
 CREATE INDEX idx_content_lead_published ON lead_contents (lead_id, published_at DESC);
+
+-- Content intelligence (Phase 18, ADR-030): ONE versioned content-analysis
+-- result per lead run. Current-version semantics mirror lead_analyses.
+CREATE TABLE content_analyses (
+  id                UUID PRIMARY KEY,             -- deterministic (idempotent replays)
+  lead_id           UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  analysis_id       UUID REFERENCES lead_analyses(id) ON DELETE CASCADE,
+  analysis_version  TEXT NOT NULL,
+  analysis_mode     analysis_mode NOT NULL DEFAULT 'STANDARD',
+  sampling          JSONB NOT NULL,               -- { strategy, depth, considered, selected[], budget }
+  profile_content_consistency TEXT NOT NULL CHECK (profile_content_consistency IN
+                      ('PROFILE_CONTENT_AGREE', 'PROFILE_CONTENT_PARTIAL',
+                       'PROFILE_CONTENT_CONFLICT', 'INSUFFICIENT_CONTENT')),
+  consistency_confidence NUMERIC(5,4) CHECK (consistency_confidence IS NULL OR
+                        (consistency_confidence >= 0 AND consistency_confidence <= 1)),
+  activity_signals  JSONB NOT NULL DEFAULT '{}',  -- recency/cadence/recentCount (content-derived)
+  content_relevance NUMERIC(5,4) CHECK (content_relevance IS NULL OR
+                      (content_relevance >= 0 AND content_relevance <= 1)),
+  relevance_criteria TEXT,                        -- requested search criteria when provided
+  review_reasons    JSONB NOT NULL DEFAULT '[]',  -- structured reasons only, no chain-of-thought
+  summary           TEXT,
+  is_current        BOOLEAN NOT NULL DEFAULT TRUE,
+  superseded_at     TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (is_current = TRUE OR superseded_at IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX uniq_content_analyses_current
+  ON content_analyses (lead_id) WHERE is_current = TRUE;
+CREATE INDEX idx_content_analyses_lead
+  ON content_analyses (lead_id, created_at DESC);
+
+-- Per-content-item outcome of one content-analysis version. Historical rows
+-- are never overwritten: (content_analysis_id, lead_content_id) is unique.
+CREATE TABLE content_analysis_items (
+  id                  UUID PRIMARY KEY,           -- deterministic
+  content_analysis_id UUID NOT NULL REFERENCES content_analyses(id) ON DELETE CASCADE,
+  lead_content_id     UUID NOT NULL REFERENCES lead_contents(id) ON DELETE CASCADE,
+  content_type        TEXT NOT NULL,
+  selected_reasons    JSONB NOT NULL DEFAULT '[]',-- RECENCY | REPRESENTATIVE | HIGH_SIGNAL | TYPE_DIVERSITY | ONLY_AVAILABLE
+  text_analyzed       BOOLEAN NOT NULL DEFAULT FALSE,
+  image_analyzed      BOOLEAN NOT NULL DEFAULT FALSE,
+  media_analyzed      BOOLEAN NOT NULL DEFAULT FALSE,
+  modality_notes      JSONB NOT NULL DEFAULT '{}',-- e.g. { "vision": "UNAVAILABLE" } — missing modality explicit
+  relevance           NUMERIC(5,4) CHECK (relevance IS NULL OR
+                        (relevance >= 0 AND relevance <= 1)),
+  relevance_signals   JSONB NOT NULL DEFAULT '[]',
+  topics              JSONB NOT NULL DEFAULT '[]',
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (content_analysis_id, lead_content_id)
+);
+
+CREATE INDEX idx_content_analysis_items_analysis
+  ON content_analysis_items (content_analysis_id);
+CREATE INDEX idx_content_analysis_items_content
+  ON content_analysis_items (lead_content_id);
 
 -- =====================================================================
 -- 6. ANALYSIS / EVIDENCE   (current-version semantics)
@@ -966,11 +1024,12 @@ CREATE INDEX idx_suppression_lookup ON suppression_entries (tenant_id, scope, le
 CREATE TABLE evaluation_runs (
   id                     UUID PRIMARY KEY,
   tenant_id              UUID NOT NULL REFERENCES tenants(id),
-  dataset_version        TEXT NOT NULL,
-  arm                    TEXT NOT NULL CHECK (arm IN (
+  dataset_version        TEXT NOT NULL,  arm                      TEXT NOT NULL CHECK (arm IN (
                            'RULES_ONLY', 'LLM_ONLY', 'RULES_THEN_LLM',
-                           'LLM_THEN_DECISION_PROVIDER', 'RULES_LLM_DECISION_PROVIDER')),
-  arm_status             TEXT NOT NULL CHECK (arm_status IN ('EXECUTED', 'NOT_CONFIGURED', 'FAILED')),
+                           'LLM_THEN_DECISION_PROVIDER', 'RULES_LLM_DECISION_PROVIDER',
+                           'PROFILE_ONLY', 'TEXT_CONTENT', 'TEXT_IMAGE',
+                           'FULL_AVAILABLE_EVIDENCE')),
+  arm_status               TEXT NOT NULL CHECK (arm_status IN ('EXECUTED', 'NOT_CONFIGURED', 'FAILED')),
   arm_reason             TEXT,
   provider               TEXT NOT NULL,
   model                  TEXT NOT NULL,

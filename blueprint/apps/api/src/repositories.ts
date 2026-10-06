@@ -575,4 +575,71 @@ export class AnalysisRepository {
     );
     return r.rows[0] ?? null;
   }
+
+  // ---------------------------------------------------- content intelligence (Phase 18)
+
+  async listContents(tenantId: string, leadId: string, limit = 50): Promise<Record<string, unknown>[]> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT c.id, c.source_content_id AS sourceContentId, c.content_type AS contentType,
+              c.text, c.media_url AS mediaUrl, c.published_at AS publishedAt,
+              c.content_hash AS contentHash, c.retrieved_at AS retrievedAt, c.metadata
+       FROM lead_contents c
+       JOIN leads l ON l.id = c.lead_id
+       WHERE c.lead_id = $1 AND l.tenant_id = $2
+       ORDER BY c.published_at DESC NULLS LAST, c.created_at DESC
+       LIMIT $3`,
+      [leadId, tenantId, Math.min(limit, 200)],
+    );
+    return r.rows;
+  }
+
+  async currentContentAnalysis(tenantId: string, leadId: string): Promise<Record<string, unknown> | null> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT ca.id, ca.lead_id AS leadId, ca.analysis_id AS analysisId,
+              ca.analysis_version AS analysisVersion, ca.analysis_mode::text AS analysisMode,
+              ca.sampling, ca.profile_content_consistency AS profileContentConsistency,
+              ca.consistency_confidence AS consistencyConfidence, ca.activity_signals AS activitySignals,
+              ca.content_relevance AS contentRelevance, ca.relevance_criteria AS relevanceCriteria,
+              ca.review_reasons AS reviewReasons, ca.summary, ca.is_current AS isCurrent,
+              ca.superseded_at AS supersededAt, ca.created_at AS createdAt
+       FROM content_analyses ca
+       JOIN leads l ON l.id = ca.lead_id
+       WHERE ca.lead_id = $1 AND l.tenant_id = $2 AND ca.is_current = TRUE`,
+      [leadId, tenantId],
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async listContentAnalysisItems(tenantId: string, contentAnalysisId: string): Promise<Record<string, unknown>[]> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT i.id, i.lead_content_id AS leadContentId, i.content_type AS contentType,
+              i.selected_reasons AS selectedReasons, i.text_analyzed AS textAnalyzed,
+              i.image_analyzed AS imageAnalyzed, i.media_analyzed AS mediaAnalyzed,
+              i.modality_notes AS modalityNotes, i.relevance, i.relevance_signals AS relevanceSignals,
+              i.topics
+       FROM content_analysis_items i
+       JOIN content_analyses ca ON ca.id = i.content_analysis_id
+       JOIN leads l ON l.id = ca.lead_id
+       WHERE i.content_analysis_id = $1 AND l.tenant_id = $2
+       ORDER BY i.id`,
+      [contentAnalysisId, tenantId],
+    );
+    return r.rows;
+  }
+
+  async listContentAnalyses(tenantId: string, leadId: string, limit = 10): Promise<Record<string, unknown>[]> {
+    const r = await this.db.query<Record<string, unknown>>(
+      `SELECT ca.id, ca.analysis_id AS analysisId, ca.analysis_version AS analysisVersion,
+              ca.analysis_mode::text AS analysisMode, ca.profile_content_consistency AS profileContentConsistency,
+              ca.consistency_confidence AS consistencyConfidence, ca.review_reasons AS reviewReasons,
+              ca.is_current AS isCurrent, ca.superseded_at AS supersededAt, ca.created_at AS createdAt
+       FROM content_analyses ca
+       JOIN leads l ON l.id = ca.lead_id
+       WHERE ca.lead_id = $1 AND l.tenant_id = $2
+       ORDER BY ca.created_at DESC
+       LIMIT $3`,
+      [leadId, tenantId, Math.min(limit, 50)],
+    );
+    return r.rows;
+  }
 }

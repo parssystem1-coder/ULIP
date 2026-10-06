@@ -143,7 +143,7 @@ export class DbAnalysisStore implements AnalysisStore {
         [aq.id, run.leadId, aq.qualityScore, aq.riskLevel, JSON.stringify(aq.signals), aq.confidence, aq.modelVersion],
       );
 
-      const providerRef = await this.resolveProvider(client, run);
+      const providerRef = await this.resolveProvider(client, run.aiRun);
       await client.query(
         `INSERT INTO ai_runs
            (id, tenant_id, lead_id, job_id, provider_id, model_version_id, task_type,
@@ -157,6 +157,67 @@ export class DbAnalysisStore implements AnalysisStore {
           run.aiRun.latencyMs, run.aiRun.promptVersion, run.aiRun.schemaVersion, run.aiRun.error ?? null,
         ],
       );
+
+      // Phase 18: versioned content intelligence (supersession mirrors lead_analyses).
+      const ca = run.contentAnalysis;
+      if (ca !== undefined) {
+        const supCa = await client.query<{ id: string }>(
+          `UPDATE content_analyses SET is_current = FALSE, superseded_at = now()
+           WHERE lead_id = $1 AND is_current = TRUE AND id <> $2 RETURNING id`,
+          [run.leadId, ca.analysis.id],
+        );
+        void supCa;
+        await client.query(
+          `INSERT INTO content_analyses
+             (id, lead_id, analysis_id, analysis_version, analysis_mode, sampling,
+              profile_content_consistency, consistency_confidence, activity_signals,
+              content_relevance, relevance_criteria, review_reasons, summary, is_current)
+           VALUES ($1, $2, $3, $4, $5::analysis_mode, $6::jsonb, $7, $8, $9::jsonb,
+                   $10, $11, $12::jsonb, $13, TRUE)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            ca.analysis.id, run.leadId, ca.analysis.analysisId, ca.analysis.analysisVersion,
+            ca.analysis.analysisMode, JSON.stringify(ca.analysis.sampling),
+            ca.analysis.profileContentConsistency, ca.analysis.consistencyConfidence,
+            JSON.stringify(ca.analysis.activitySignals), ca.analysis.contentRelevance,
+            ca.analysis.relevanceCriteria, JSON.stringify(ca.analysis.reviewReasons),
+            ca.analysis.summary,
+          ],
+        );
+        for (const item of ca.items) {
+          await client.query(
+            `INSERT INTO content_analysis_items
+               (id, content_analysis_id, lead_content_id, content_type, selected_reasons,
+                text_analyzed, image_analyzed, media_analyzed, modality_notes, relevance,
+                relevance_signals, topics)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12::jsonb)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              item.id, item.contentAnalysisId, item.leadContentId, item.contentType,
+              JSON.stringify(item.selectedReasons), item.textAnalyzed, item.imageAnalyzed,
+              item.mediaAnalyzed, JSON.stringify(item.modalityNotes), item.relevance,
+              JSON.stringify(item.relevanceSignals), JSON.stringify(item.topics),
+            ],
+          );
+        }
+        if (ca.visionRun !== undefined) {
+          const visionProvider = await this.resolveProvider(client, ca.visionRun);
+          await client.query(
+            `INSERT INTO ai_runs
+               (id, tenant_id, lead_id, job_id, provider_id, model_version_id, task_type,
+                analysis_mode, input_hash, output_hash, status, latency_ms, prompt_version,
+                schema_version, error)
+             VALUES ($1, $2, $3, $4, $5, $6, 'VISUAL_ANALYSIS', $7::analysis_mode, $8, $9, $10, $11, $12, $13, $14)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              ca.visionRun.id, run.tenantId, run.leadId, run.jobId, visionProvider.id,
+              visionProvider.modelVersionId, run.analysis.analysisMode, ca.visionRun.inputHash,
+              ca.visionRun.outputHash, ca.visionRun.status, ca.visionRun.latencyMs,
+              ca.visionRun.promptVersion, ca.visionRun.schemaVersion, ca.visionRun.error ?? null,
+            ],
+          );
+        }
+      }
 
       return {
         analysisId: run.analysis.id,
@@ -200,14 +261,14 @@ export class DbAnalysisStore implements AnalysisStore {
 
   private async resolveProvider(
     client: { query(q: string, v?: readonly unknown[]): Promise<{ rows: { id: string }[] }> },
-    run: PersistRunInput,
+    aiRun: PersistRunInput['aiRun'],
   ): Promise<{ id: string; modelVersionId: string | null }> {
     const provider = await client.query(
       `INSERT INTO ai_providers (name, type, config)
        VALUES ($1, $2, '{}'::jsonb)
        ON CONFLICT (name) DO UPDATE SET config = ai_providers.config
        RETURNING id`,
-      [run.aiRun.provider, run.aiRun.providerType],
+      [aiRun.provider, aiRun.providerType],
     );
     const providerId = provider.rows[0]?.id;
     if (providerId === undefined) throw new Error('failed to resolve ai_providers row');
@@ -216,7 +277,7 @@ export class DbAnalysisStore implements AnalysisStore {
        VALUES ($1, $2, $3, '[]'::jsonb)
        ON CONFLICT (provider_id, name, version) DO UPDATE SET status = 'ACTIVE'
        RETURNING id`,
-      [providerId, run.aiRun.model, run.aiRun.schemaVersion],
+      [providerId, aiRun.model, aiRun.schemaVersion],
     );
     return { id: providerId, modelVersionId: model.rows[0]?.id ?? null };
   }

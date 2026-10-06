@@ -92,3 +92,41 @@ from this package (deterministic fake by default; live HTTP only via
 - **Observability** — every run records `ai_runs` (provider, model, latency,
   input/output hash, prompt/schema version, status) and the structured log
   carries `jobId`/`tenantId`/`leadId`/`correlationId` end to end.
+
+## 11. Content intelligence & multimodal analysis (Phase 18, ADR-030)
+
+Content (posts/captions/images) is a first-class analysis input, not an
+optional bio attribute:
+
+- **Sampling** — deterministic `RECENCY_DIVERSITY_SIGNAL` (BASIC 3 / STANDARD 8
+  / DEEP 16) across recency, type diversity, engagement signal and repeated
+  topics; per-item selection reasons are persisted for audit.
+- **Vision routing** — the `VisionProvider` slot runs for a budget-capped
+  selection of media items only (BASIC 0 / STANDARD 2 / DEEP 4, newest first).
+  Unavailable / not-selected / failed outcomes are recorded explicitly
+  (`VISION_UNAVAILABLE`, `VISION_SKIPPED_BY_DEPTH`, `VISION_SELECTED`, FAILED);
+  a missing modality is never fabricated and a vision failure never aborts the
+  analysis. Video/reel content is analyzed at metadata level only
+  (`METADATA_ONLY`).
+- **Deterministic fake vision** — `DeterministicFakeVisionProvider`
+  (`fake-vision.ts`) mirrors the fake LLM: keyword rules against the run
+  context, constant confidences, zero observations on empty context. Selected
+  for `AI_PROVIDER=fake`; the real `HttpVisionProvider` stays gated on
+  `AI_VISION_MODEL`.
+- **Evidence-first content conclusions** — every sampled item cites its
+  `CAPTION_TEXT` evidence row (`lead_contents/{id}`); every analyzed image
+  cites an `IMAGE_OBSERVATION` row (`lead_contents/{id}#vision`, provider/model
+  stamped). Aggregated signals carry the evidence ids of every matching item,
+  and repeated independent hits raise confidence (0.55 + 0.08·(hits−1), cap
+  0.9).
+- **Consistency + review reasons** — profile-vs-content consistency
+  (AGREE/PARTIAL/CONFLICT/INSUFFICIENT_CONTENT); contradiction demotes
+  confidence and forces QUALIFIED → REVIEW_REQUIRED with structured reasons
+  (PROFILE_CONTENT_CONFLICT, INSUFFICIENT_CONTENT, WEAK_EVIDENCE,
+  MODALITY_UNAVAILABLE, TAXONOMY_AMBIGUITY).
+- **Content-derived activity** — publication recency/cadence/30-day count/volume
+  drive the activity dimension; follower counts are a capped secondary signal
+  at most, never standalone activity evidence; no growth claims.
+- **Relevance** — per-item deterministic relevance against requested search
+  criteria (`relevanceCriteria` on the analysis job payload), aggregated into
+  the relevance dimension additively.

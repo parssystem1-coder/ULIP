@@ -203,3 +203,38 @@ Live-provider evaluation is explicit (`ULIP_EVAL_LIVE=1`) — never in tests.
 
 See `docs/adr/ADR-029-evaluation-calibration-regression.md` and
 `prompts/phases/PHASE-17-EVALUATION-CALIBRATION-REGRESSION.md`.
+
+## Phase 18 — Content Intelligence & Multimodal Analysis (implemented)
+
+Content is now a first-class analysis input (ADR-030), analyzed as evidence in
+its own right rather than as an optional string attached to the bio:
+
+- **Ingestion**: connector payloads carrying `posts`/`media` arrays become
+  `lead_contents` rows (content types widened to POST / REEL / CAROUSEL), with
+  deterministic ids, content hashes and idempotent re-ingestion — historical
+  content is never overwritten.
+- **Sampling**: cost-aware, fully deterministic (BASIC 3 / STANDARD 8 / DEEP 16)
+  across recency, type diversity, high-signal and repeated-topic
+  representativeness; every selection records its reasons.
+- **Multimodal with honesty**: the LLM reads sampled text evidence; Vision runs
+  only for a budget-capped selection of media items (0/2/4 by depth). Missing or
+  failing modalities are recorded (`VISION_UNAVAILABLE`,
+  `MODALITY_UNAVAILABLE`, video = `METADATA_ONLY`) — never fabricated. A
+  deterministic fake vision provider mirrors the fake LLM for dev/E2E; the real
+  provider stays honestly gated on `AI_VISION_MODEL`.
+- **Cross-content intelligence**: aggregated keyword signals cite the evidence
+  ids of every matching item ("printer parts ← posts 1, 2, 3");
+  profile-vs-content consistency (AGREE / PARTIAL / CONFLICT /
+  INSUFFICIENT_CONTENT) demotes confidence and forces review on contradiction;
+  per-item relevance against requested search criteria; activity intelligence
+  from publication recency/cadence — never from follower counts alone.
+- **Versioning**: `content_analyses` + `content_analysis_items` (migration 0005)
+  with current-version semantics; retries are idempotent, history is preserved.
+- **API**: `GET /leads/{id}/contents` and `GET /leads/{id}/content-analysis`
+  (`?history=1`) — OpenAPI-synced, tenant-scoped.
+- **Evaluation**: PROFILE_ONLY / TEXT_CONTENT / TEXT_IMAGE /
+  FULL_AVAILABLE_EVIDENCE arms measure how much content evidence adds, with
+  committed baselines and the same regression release gate.
+
+See `docs/adr/ADR-030-content-intelligence-multimodal.md` and
+`prompts/phases/PHASE-18-CONTENT-INTELLIGENCE-MULTIMODAL.md`.

@@ -27,6 +27,7 @@ import type {
   SourceLookup,
   SourceRecord,
 } from './contracts.ts';
+import type { ContentIngestor } from './content.ts';
 
 import { ConnectorNotAvailableError, DiscoveryInputError, parseDiscoveryPayload, toConnectorRequest } from './contracts.ts';
 
@@ -44,6 +45,8 @@ export type {
   SourceLookup,
   SourceRecord,
 };
+
+export type { ContentIngestor };
 
 const DEFAULT_MAX_CANDIDATES = 50;
 const HARD_MAX_CANDIDATES = 10_000;
@@ -109,6 +112,7 @@ export async function runDiscovery(
     created: 0,
     updated: 0,
     rawPersisted: 0,
+    contentsIngested: 0,
   };
 
   for (const item of result.items) {
@@ -142,6 +146,31 @@ export async function runDiscovery(
     if (resolved.action === 'CREATED') outcome.created += 1;
     else outcome.updated += 1;
 
+    // 4) Phase 18: content ingestion — posts/media payloads become first-class
+    //    lead_contents rows (deterministic ids; repeats insert nothing).
+    if (deps.contentIngestor !== undefined) {
+      try {
+        const ingested = await deps.contentIngestor.ingestForLead({
+          source,
+          leadId: resolved.leadId,
+          externalId: item.externalId,
+          payload: item.payload,
+          collectedAt: item.collectedAt,
+        });
+        outcome.contentsIngested += ingested;
+      } catch (err) {
+        // Content ingestion failures never discard the discovery result; the
+        // error is surfaced in the job log (the worker decides job status).
+        deps.log.error('discovery: content ingestion failed', {
+          jobId: context.jobId,
+          tenantId: context.tenantId,
+          externalId: item.externalId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+    }
+
     deps.log.info('discovery: item processed', {
       jobId: context.jobId,
       requestId: context.requestId,
@@ -152,6 +181,7 @@ export async function runDiscovery(
       leadId: resolved.leadId,
       businessId: resolved.businessId,
       action: resolved.action,
+      contentsIngested: outcome.contentsIngested,
     });
   }
 

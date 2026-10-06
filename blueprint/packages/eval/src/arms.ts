@@ -282,6 +282,10 @@ export function armAvailability(options: {
         return { arm, status: 'EXECUTED' as const };
       case 'LLM_ONLY':
       case 'RULES_THEN_LLM':
+      case 'PROFILE_ONLY':
+      case 'TEXT_CONTENT':
+      case 'TEXT_IMAGE':
+      case 'FULL_AVAILABLE_EVIDENCE':
         return options.llmReady
           ? { arm, status: 'EXECUTED' as const }
           : { arm, status: 'NOT_CONFIGURED' as const, reason: 'no LLM provider configured (AI_PROVIDER)' };

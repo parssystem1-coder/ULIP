@@ -22,6 +22,7 @@
 import { Worker, type ConnectionOptions, type Job as BullJob } from 'bullmq';
 import {
   ConnectorNotAvailableError,
+  DbContentIngestor,
   DbEntityResolver,
   DbRawEntityStore,
   DeterministicFakeConnectorFactory,
@@ -263,6 +264,8 @@ export async function runDiscoveryFlowForJob(
   const rawEntities = new DbRawEntityStore(deps.db);
   const resolver = new DbEntityResolver(deps.db);
   const normalizer = new PersianAwareNormalizer();
+  // Phase 18: connector payloads carry posts/media → first-class lead_contents.
+  const contentIngestor = new DbContentIngestor(deps.db);
 
   const allowFake = payload['allowFake'] === true;
 
@@ -273,6 +276,7 @@ export async function runDiscoveryFlowForJob(
       rawEntities,
       normalizer,
       resolver,
+      contentIngestor,
       sources: {
         async findById(tenantId, sourceId) {
           const r = await deps.db.query<{ id: string; tenant_id: string; type: string; name: string; status: string; config: Record<string, unknown> }>(

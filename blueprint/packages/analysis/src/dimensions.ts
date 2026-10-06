@@ -6,11 +6,21 @@ import type {
   ScoreReason,
   UncertainField,
 } from './contracts.ts';
+import type { ActivitySignals, ConsistencyResult, ContentRelevance } from './intel.ts';
+
+/** Phase 18 content signals folded into the deterministic dimensions. */
+export interface ContentDimensionSignals {
+  consistency: ConsistencyResult;
+  relevance: ContentRelevance;
+  activity: ActivitySignals;
+}
 
 export interface DimensionComputationInput {
   profile: StructuredProfile;
   evidence: readonly EvidenceDraft[];
   context: LeadContext;
+  /** Present when the lead had content to analyze (Phase 18). */
+  content?: ContentDimensionSignals | undefined;
 }
 
 export interface DimensionResult {
@@ -38,7 +48,7 @@ function idsFor(evidence: readonly EvidenceDraft[], type: EvidenceDraft['evidenc
  * evidence ids that support it (explainability, no chain-of-thought).
  */
 export function computeDimensions(input: DimensionComputationInput): DimensionResult {
-  const { profile, evidence, context } = input;
+  const { profile, evidence, context, content } = input;
   const reasons: ScoreReason[] = [];
   const uncertain: UncertainField[] = [];
 
@@ -46,7 +56,7 @@ export function computeDimensions(input: DimensionComputationInput): DimensionRe
   let relevance = 0;
   const add = (delta: number, reason: Omit<ScoreReason, 'delta' | 'dimension'>): void => {
     relevance += delta;
-    reasons.push({ ...reason, dimension: 'relevance', delta: clamp100(delta) });
+    reasons.push({ ...reason, dimension: 'relevance', delta: Math.round(delta * 100) / 100 });
   };
   if (isClaimed(profile.businessType)) {
     add(35 * profile.businessType.confidence, {
@@ -96,6 +106,25 @@ export function computeDimensions(input: DimensionComputationInput): DimensionRe
       evidenceIds: idsFor(evidence, 'PROFILE_METADATA').slice(0, 1),
     });
   }
+  // Phase 18: aggregated content relevance vs the requested search criteria.
+  if (content !== undefined && content.relevance.overall !== null) {
+    const overall = content.relevance.overall;
+    const matched = content.relevance.perItem.filter((p) => p.relevance >= 0.5);
+    const matchedIds = matched.map((p) => p.contentId);
+    if (overall >= 0.5) {
+      add(10 * overall, {
+        code: 'RELEVANCE_CONTENT_MATCH',
+        message: `Sampled content matches the search criteria (${Math.round(overall * 100)}%)`,
+        evidenceIds: matchedIds,
+      });
+    } else {
+      add(-10 * (1 - overall), {
+        code: 'RELEVANCE_CONTENT_MISMATCH',
+        message: `Sampled content barely matches the search criteria (${Math.round(overall * 100)}%)`,
+        evidenceIds: matchedIds,
+      });
+    }
+  }
 
   // ---------------------------------------------------------- audienceQuality
   let audienceQuality = 0;
@@ -121,10 +150,20 @@ export function computeDimensions(input: DimensionComputationInput): DimensionRe
   if (mediaIds.length > 0) aq(10, 'AQ_CONTENT_PRESENT', 'Media/content samples present', mediaIds);
 
   // ----------------------------------------------------------------- activity
-  const activity = computeActivity(evidence, context, reasons);
+  const activity = computeActivity(evidence, context, reasons, content?.activity);
 
   // --------------------------------------------------------------- confidence
-  const confidence = computeConfidence(profile, evidence, reasons);
+  let confidence = computeConfidence(profile, evidence, reasons);
+  if (content?.consistency.signal === 'PROFILE_CONTENT_CONFLICT') {
+    confidence = clamp100(confidence - 15);
+    reasons.push({
+      dimension: 'confidence',
+      code: 'CONF_PROFILE_CONTENT_CONFLICT',
+      message: 'Content contradicts the profile — confidence reduced, review recommended',
+      delta: -15,
+      evidenceIds: content.consistency.evidenceIds,
+    });
+  }
 
   // ------------------------------------------------- explicitly uncertain
   const pushIfUncertain = (field: string, p: FieldPrediction | undefined): void => {
@@ -161,7 +200,45 @@ function computeActivity(
   evidence: readonly EvidenceDraft[],
   context: LeadContext,
   reasons: ScoreReason[],
+  contentActivity?: ActivitySignals | undefined,
 ): number {
+  // Phase 18: content-derived signals dominate when dated content exists —
+  // publishing recency/cadence, never follower counts alone, never growth claims.
+  const contentUsable =
+    contentActivity !== undefined &&
+    contentActivity.reasons.length > 0 &&
+    !contentActivity.reasons.some((r) => r.code === 'ACTIVITY_CONTENT_UNAVAILABLE');
+  if (contentUsable && contentActivity !== undefined) {
+    let score = contentActivity.score;
+    for (const r of contentActivity.reasons) {
+      reasons.push({
+        dimension: 'activity',
+        code: r.code,
+        message: r.message,
+        delta: r.code === 'ACTIVITY_RECENT_PUBLISH' ? 40 : r.code === 'ACTIVITY_CADENCE_ACTIVE' ? 30 : 0,
+        evidenceIds: r.evidenceIds,
+      });
+    }
+    // Engagement metadata is a secondary additive signal, capped low so a
+    // follower count can never dominate (or replace) publishing evidence.
+    const engagement = evidence.find((e) => e.evidenceType === 'ENGAGEMENT_SIGNAL');
+    if (engagement !== undefined) {
+      const followers = Number(engagement.metadata['followers'] ?? 0);
+      const delta = followers >= 10_000 ? 10 : followers >= 1_000 ? 7 : followers >= 100 ? 4 : 0;
+      if (delta > 0) {
+        score += delta;
+        reasons.push({
+          dimension: 'activity',
+          code: 'ACTIVITY_ENGAGEMENT_SECONDARY',
+          message: `Engagement metadata observed (${followers} followers) — secondary signal`,
+          delta,
+          evidenceIds: [engagement.id],
+        });
+      }
+    }
+    return clamp100(score);
+  }
+
   let score = 0;
   const captions = evidence.filter((e) => e.evidenceType === 'CAPTION_TEXT');
   if (captions.length >= 5) score += 60;

@@ -24,6 +24,8 @@ import {
   getJob,
   getLead,
   getLeadAnalysis,
+  getLeadContents,
+  getLeadContentAnalysis,
   getLeadEvidence,
   getLeadScores,
   healthHandler,
@@ -63,6 +65,8 @@ export async function createApiServer(app: AppContext): Promise<Server> {
   // lead analysis (Phase 16, ADR-028) — OPENAPI.yaml /leads/{leadId}/...
   router.add('GET', '/leads/:leadId', getLead(app));
   router.add('GET', '/leads/:leadId/analysis', getLeadAnalysis(app));
+  router.add('GET', '/leads/:leadId/contents', getLeadContents(app));
+  router.add('GET', '/leads/:leadId/content-analysis', getLeadContentAnalysis(app));
   router.add('GET', '/leads/:leadId/evidence', getLeadEvidence(app));
   router.add('GET', '/leads/:leadId/scores', getLeadScores(app));
   router.add('POST', '/leads/:leadId/reprocess', reprocessLead(app));

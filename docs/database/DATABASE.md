@@ -248,14 +248,56 @@ source_id + external_id
 id
 lead_id
 source_content_id
-content_type
+content_type   -- TEXT | IMAGE | VIDEO | LINK | METADATA | POST | REEL | CAROUSEL (0005)
 text
 media_url
 published_at
 metadata
 content_hash
+retrieved_at
 created_at
 ```
+
+Content is a first-class analysis input (Phase 18, ADR-030): connector payload
+`posts`/`media`/`contents` arrays are ingested with deterministic ids and a
+sha256 content hash; the UNIQUE `(lead_id, source_content_id, content_hash)`
+constraint keeps history immutable — a changed caption appends a NEW version
+row, a repeat inserts nothing.
+
+---
+
+# 11b. content_analyses + content_analysis_items (migration 0005, Phase 18, ADR-030)
+
+```sql
+content_analyses            one VERSIONED content-intelligence result per lead run
+  id                        deterministic uuid5(job, lead) — idempotent replay
+  lead_id, analysis_id      FK → leads / lead_analyses
+  analysis_version, analysis_mode
+  sampling                  JSONB strategy record (depth, considered, budget,
+                            selected[] with per-item reasons + evidenceId, skipped[])
+  profile_content_consistency  AGREE | PARTIAL | CONFLICT | INSUFFICIENT_CONTENT
+  consistency_confidence    0..1
+  activity_signals          JSONB recency/cadence/recentCount (content-derived;
+                            never follower-only claims)
+  content_relevance         0..1 | NULL (NULL when no criteria supplied)
+  relevance_criteria        the requested search criteria, when provided
+  review_reasons            JSONB [PROFILE_CONTENT_CONFLICT, INSUFFICIENT_CONTENT,
+                            WEAK_EVIDENCE, MODALITY_UNAVAILABLE, TAXONOMY_AMBIGUITY]
+  is_current / superseded_at  current-version semantics (partial unique index,
+                            exactly one current row per lead); history preserved
+
+content_analysis_items      per-sampled-item outcome of one version
+  (content_analysis_id, lead_content_id) UNIQUE
+  selected_reasons          RECENCY | REPRESENTATIVE | HIGH_SIGNAL | TYPE_DIVERSITY
+                            | ONLY_AVAILABLE
+  text/image/media_analyzed honest per-modality flags
+  modality_notes            e.g. {"vision": "UNAVAILABLE"} — missing modalities
+                            are recorded, never fabricated; video = METADATA_ONLY
+  relevance, relevance_signals, topics
+```
+
+A separate `ai_runs` row with `task_type='VISUAL_ANALYSIS'` is written when a
+Vision step actually ran (provider/model/prompt/schema versions stamped).
 
 ---
 

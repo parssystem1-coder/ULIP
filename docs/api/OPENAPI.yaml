@@ -290,6 +290,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundError'
+  /leads/{leadId}/contents:
+    get:
+      tags: [Analysis]
+      summary: List analyzed content (Phase 18 — first-class content input)
+      description: |
+        The lead's ingested content items (lead_contents). Historical content is
+        never overwritten: a changed caption/media set appends a new version row
+        keyed by contentHash. Engagement signals appear only when the connector
+        supplied them.
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadContent'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+  /leads/{leadId}/content-analysis:
+    get:
+      tags: [Analysis]
+      summary: Get the current content-intelligence result (Phase 18, versioned)
+      description: |
+        One versioned content analysis: deterministic sampling strategy,
+        profile-vs-content consistency, content-derived activity signals,
+        aggregated content relevance, structured review reasons and the
+        per-item breakdown. No chain-of-thought — structured reasons only.
+        Pass ?history=1 to list superseded versions (history is preserved).
+      parameters:
+        - $ref: '#/components/parameters/LeadId'
+        - in: query
+          name: history
+          schema: { type: string, enum: ['1'] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ContentAnalysis'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ContentAnalysisVersion'
+        '404':
+          description: No content analysis recorded for this lead yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
   /leads/search/natural-language:
     post:
       tags: [Leads]
@@ -1768,6 +1837,97 @@ components:
         contentHash: { type: string }
         retrievedAt: { type: string, format: date-time }
         confidence: { type: number, nullable: true }
+    LeadContent:
+      type: object
+      required: [id, sourceContentId, contentType, contentHash, retrievedAt]
+      properties:
+        id: { type: string, format: uuid }
+        sourceContentId: { type: string }
+        contentType:
+          type: string
+          enum: [TEXT, IMAGE, VIDEO, LINK, METADATA, POST, REEL, CAROUSEL]
+        text: { type: string, nullable: true }
+        mediaUrl: { type: string, nullable: true }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        contentHash: { type: string, description: Content version fingerprint (sha256 of canonical fields) }
+        retrievedAt: { type: string, format: date-time }
+        engagement:
+          type: object
+          properties:
+            likes: { type: number, nullable: true }
+            comments: { type: number, nullable: true }
+            views: { type: number, nullable: true }
+    ProfileContentConsistency:
+      type: string
+      enum: [PROFILE_CONTENT_AGREE, PROFILE_CONTENT_PARTIAL, PROFILE_CONTENT_CONFLICT, INSUFFICIENT_CONTENT]
+    ContentAnalysisItem:
+      type: object
+      required: [id, leadContentId, contentType]
+      properties:
+        id: { type: string, format: uuid }
+        leadContentId: { type: string, format: uuid }
+        contentType:
+          type: string
+          enum: [TEXT, IMAGE, VIDEO, LINK, METADATA, POST, REEL, CAROUSEL]
+        selectedReasons:
+          type: array
+          items: { type: string, enum: [RECENCY, REPRESENTATIVE, HIGH_SIGNAL, TYPE_DIVERSITY, ONLY_AVAILABLE] }
+        textAnalyzed: { type: boolean }
+        imageAnalyzed: { type: boolean }
+        mediaAnalyzed: { type: boolean }
+        modalityNotes:
+          type: object
+          additionalProperties: { type: string }
+          description: Missing modalities are recorded explicitly (never fabricated).
+        relevance: { type: number, minimum: 0, maximum: 1, nullable: true }
+        relevanceSignals: { type: array, items: { type: string } }
+        topics: { type: array, items: { type: string } }
+    ContentAnalysis:
+      type: object
+      required: [id, analysisVersion, sampling, profileContentConsistency, reviewReasons]
+      properties:
+        id: { type: string, format: uuid }
+        analysisId: { type: string, format: uuid, nullable: true }
+        analysisVersion: { type: string }
+        analysisMode: { $ref: '#/components/schemas/AnalysisMode' }
+        sampling:
+          type: object
+          description: "Deterministic sampling: strategy, depth, considered, selected[], skipped[] (auditable)."
+          additionalProperties: true
+        profileContentConsistency: { $ref: '#/components/schemas/ProfileContentConsistency' }
+        consistencyConfidence: { type: number, minimum: 0, maximum: 1, nullable: true }
+        activitySignals:
+          type: object
+          description: "Content-derived activity (recency, cadence, recent count) — never follower-only claims."
+          additionalProperties: true
+        contentRelevance: { type: number, minimum: 0, maximum: 1, nullable: true }
+        relevanceCriteria: { type: string, nullable: true }
+        reviewReasons:
+          type: array
+          items:
+            type: string
+            enum: [PROFILE_CONTENT_CONFLICT, INSUFFICIENT_CONTENT, WEAK_EVIDENCE, MODALITY_UNAVAILABLE, TAXONOMY_AMBIGUITY]
+        summary: { type: string, nullable: true }
+        isCurrent: { type: boolean }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentAnalysisItem'
+        createdAt: { type: string, format: date-time, nullable: true }
+    ContentAnalysisVersion:
+      type: object
+      required: [id, analysisVersion, profileContentConsistency, isCurrent]
+      properties:
+        id: { type: string, format: uuid }
+        analysisId: { type: string, format: uuid, nullable: true }
+        analysisVersion: { type: string }
+        analysisMode: { $ref: '#/components/schemas/AnalysisMode' }
+        profileContentConsistency: { $ref: '#/components/schemas/ProfileContentConsistency' }
+        consistencyConfidence: { type: number, minimum: 0, maximum: 1, nullable: true }
+        reviewReasons: { type: array, items: { type: string } }
+        isCurrent: { type: boolean }
+        supersededAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time, nullable: true }
     LeadScore:
       type: object
       required: [relevance, audienceQuality, activity, confidence, priority, scoringPolicyVersion]

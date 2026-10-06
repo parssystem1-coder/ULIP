@@ -58,6 +58,17 @@ Do not manufacture email, phone, city, follower quality, or business specialty w
 
 The connector may provide a set of accessible content references. The analysis policy decides which items to process.
 
+Phase 18 (ADR-030): payload `posts`/`media`/`contents` arrays are ingested as
+first-class `lead_contents` rows by the discovery pipeline
+(`DbContentIngestor`): deterministic ids, Instagram-style content types
+(POST/REEL/CAROUSEL/…), sha256 content hash, idempotent re-ingestion, history
+never overwritten. The analysis runtime then samples deterministically
+(BASIC 3 / STANDARD 8 / DEEP 16) and runs Vision only for a budget-capped
+selection of media items — unavailable modalities are recorded, never
+fabricated. A connector therefore needs nothing beyond honest payload fields
+(`id`, `text`/`caption`, `media_url`, `published_at`/`timestamp`, optional
+`likes`/`comments`/`views`) for content intelligence to work end-to-end.
+
 ## Platform boundary
 
 Do not add techniques whose purpose is to bypass authentication barriers, CAPTCHA, anti-bot controls, rate limits or other platform security/access controls.

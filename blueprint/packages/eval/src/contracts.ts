@@ -181,7 +181,11 @@ export type EvalArmId =
   | 'LLM_ONLY'
   | 'RULES_THEN_LLM'
   | 'LLM_THEN_DECISION_PROVIDER'
-  | 'RULES_LLM_DECISION_PROVIDER';
+  | 'RULES_LLM_DECISION_PROVIDER'
+  | 'PROFILE_ONLY'
+  | 'TEXT_CONTENT'
+  | 'TEXT_IMAGE'
+  | 'FULL_AVAILABLE_EVIDENCE';
 
 export const EVAL_ARM_IDS: readonly EvalArmId[] = [
   'RULES_ONLY',
@@ -189,6 +193,12 @@ export const EVAL_ARM_IDS: readonly EvalArmId[] = [
   'RULES_THEN_LLM',
   'LLM_THEN_DECISION_PROVIDER',
   'RULES_LLM_DECISION_PROVIDER',
+  // Phase 18 content/multimodal comparison arms (attack the same labels with
+  // progressively more of the evidence the production flow would have).
+  'PROFILE_ONLY',
+  'TEXT_CONTENT',
+  'TEXT_IMAGE',
+  'FULL_AVAILABLE_EVIDENCE',
 ];
 
 /** An arm runs only when its providers are configured; otherwise recorded. */

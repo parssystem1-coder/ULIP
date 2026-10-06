@@ -45,6 +45,8 @@ export interface AnalysisJobPayload {
   analysisMode: AnalysisMode;
   /** Why this run was queued (discovery | reprocess | manual | resume). */
   reason: string;
+  /** Requested search criteria for per-content relevance scoring (§11). */
+  relevanceCriteria?: string | undefined;
 }
 
 export class AnalysisInputError extends Error {
@@ -279,6 +281,73 @@ export interface PersistRunInput {
   score: ScoreRecordDraft;
   audienceQuality: AudienceQualityDraft;
   aiRun: AiRunDraft;
+  /** Phase 18: versioned content-intelligence result (absent on legacy paths). */
+  contentAnalysis?: ContentAnalysisPersist | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Content intelligence persistence (Phase 18, ADR-030 §13)
+// ---------------------------------------------------------------------------
+
+export type ProfileContentConsistency =
+  | 'PROFILE_CONTENT_AGREE'
+  | 'PROFILE_CONTENT_PARTIAL'
+  | 'PROFILE_CONTENT_CONFLICT'
+  | 'INSUFFICIENT_CONTENT';
+
+/** One versioned row of content_analyses (deterministic id → idempotent replay). */
+export interface ContentAnalysisDraft {
+  id: string;
+  leadId: string;
+  analysisId: string;
+  analysisVersion: string;
+  analysisMode: AnalysisMode;
+  sampling: Record<string, unknown>;
+  profileContentConsistency: ProfileContentConsistency;
+  consistencyConfidence: number;
+  activitySignals: Record<string, unknown>;
+  contentRelevance: number | null;
+  relevanceCriteria: string | null;
+  reviewReasons: string[];
+  summary: string;
+}
+
+/** One row of content_analysis_items for the content-analysis version above. */
+export interface ContentAnalysisItemDraft {
+  id: string;
+  contentAnalysisId: string;
+  leadContentId: string;
+  contentType: string;
+  selectedReasons: string[];
+  textAnalyzed: boolean;
+  imageAnalyzed: boolean;
+  mediaAnalyzed: boolean;
+  modalityNotes: Record<string, string>;
+  relevance: number | null;
+  relevanceSignals: string[];
+  topics: string[];
+}
+
+/** Content-intelligence payload carried through persistRun in one transaction. */
+export interface ContentAnalysisPersist {
+  analysis: ContentAnalysisDraft;
+  items: ContentAnalysisItemDraft[];
+  /** Separate VISUAL_ANALYSIS ai_run when a vision step actually ran. */
+  visionRun?: AiRunDraft | undefined;
+}
+
+/** Read-side summary of the content-intelligence result (outcome + API). */
+export interface ContentAnalysisSummary {
+  contentAnalysisId: string;
+  consistency: ProfileContentConsistency;
+  consistencyConfidence: number;
+  activityScore: number | null;
+  contentRelevance: number | null;
+  sampledCount: number;
+  consideredCount: number;
+  modalityNotes: Record<string, string>;
+  visionReason: string;
+  reviewReasons: string[];
 }
 
 export interface PersistRunResult {
@@ -393,4 +462,6 @@ export interface AnalysisOutcome {
   finalStatus: ProcessingStage;
   uncertainFields: UncertainField[];
   reasons: ScoreReason[];
+  /** Phase 18: present when the lead had content to analyze. */
+  contentAnalysis?: ContentAnalysisSummary | undefined;
 }

@@ -9,6 +9,7 @@ import type {
   AnalysisLogSink,
   AnalysisPolicyService,
   AnalysisStore,
+  ContentAnalysisPersist,
   EvidenceDraft,
   LeadContext,
   LeadLifecycle,
@@ -158,6 +159,9 @@ export class MemoryAnalysisStore implements AnalysisStore {
   readonly runs: PersistRunInput[] = [];
   readonly currentAnalysis = new Map<string, string>();
   readonly currentScore = new Map<string, string>();
+  /** Phase 18: versioned content analyses (history preserved on supersession). */
+  readonly contentAnalyses: ContentAnalysisPersist[] = [];
+  readonly currentContentAnalysis = new Map<string, string>();
   /** Shared with the lifecycle so the "DB" reflects applied transitions. */
   lifecycle?: MemoryLifecycle;
   /** Emulates the partial unique index: violations throw like PostgreSQL. */
@@ -191,6 +195,19 @@ export class MemoryAnalysisStore implements AnalysisStore {
   async persistRun(run: PersistRunInput): Promise<PersistRunResult> {
     const prevAnalysis = this.currentAnalysis.get(run.leadId);
     const prevScore = this.currentScore.get(run.leadId);
+    const ca = run.contentAnalysis;
+    if (ca !== undefined) {
+      const prevCa = this.currentContentAnalysis.get(run.leadId);
+      if (prevCa !== undefined && prevCa !== ca.analysis.id) {
+        // Historical versions stay in contentAnalyses — never overwritten.
+        this.currentContentAnalysis.set(run.leadId, ca.analysis.id);
+      } else {
+        this.currentContentAnalysis.set(run.leadId, ca.analysis.id);
+      }
+      if (!this.contentAnalyses.some((c) => c.analysis.id === ca.analysis.id)) {
+        this.contentAnalyses.push(ca);
+      }
+    }
     if (this.enforceUniqueCurrent && prevAnalysis !== undefined && prevAnalysis !== run.analysis.id) {
       this.currentAnalysis.set(run.leadId, run.analysis.id);
     } else {

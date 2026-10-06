@@ -5,5 +5,6 @@ export * from './http.ts';
 export * from './http-llm.ts';
 export * from './http-providers.ts';
 export * from './fake.ts';
+export * from './fake-vision.ts';
 export * from './factory.ts';
 export * from './validation.ts';

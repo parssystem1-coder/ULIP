@@ -31,6 +31,12 @@ Current migrations:
   trigger-enforced append-only history. Mirrored in
   `database/schema/schema.sql`. `ai_runs` is deliberately not duplicated: an
   evaluation run measures a frozen dataset, it is not a per-lead provider call.
+- `0005_content_intelligence` — Phase 18 content intelligence (ADR-030):
+  widens `lead_contents.content_type` with POST/REEL/CAROUSEL; adds versioned
+  `content_analyses` (current-version semantics mirroring `lead_analyses`) and
+  per-item `content_analysis_items`; widens `evaluation_runs.arm` with the four
+  content/multimodal comparison arms (PROFILE_ONLY, TEXT_CONTENT, TEXT_IMAGE,
+  FULL_AVAILABLE_EVIDENCE). Mirrored in `database/schema/schema.sql`.
 
 Note: the SQL files in this directory are plain, runner-agnostic SQL. The Phase 1
 task wraps them with the chosen runner's naming/tracking conventions.

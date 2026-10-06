@@ -61,6 +61,7 @@ interface Fixture {
   leadId: string;
   jobId: string;
   wholesalerId: string;
+  sourceId: string;
 }
 
 async function seed(target: Database): Promise<Fixture> {
@@ -132,7 +133,7 @@ async function seed(target: Database): Promise<Fixture> {
     `INSERT INTO jobs (id, tenant_id, type, payload) VALUES ($1, $2, 'ANALYSIS', $3)`,
     [jobId, tenantId, JSON.stringify({ leadId, analysisMode: 'STANDARD', reason: 'it' })],
   );
-  return { tenantId, leadId, jobId, wholesalerId };
+  return { tenantId, leadId, jobId, wholesalerId, sourceId: src };
 }
 
 const OTHER = randomUUID();
@@ -311,4 +312,88 @@ test('orchestrator owns transitions: illegal moves rejected, REPROCESS requeues'
   // Re-submitting while a job is active reuses it (no duplicate jobs).
   const again = await orchestrator.reprocess({ tenantId: f.tenantId, leadId: f.leadId, analysisMode: 'STANDARD' });
   assert.equal(again.id, job.id);
+});
+
+test('Phase 18: content-aware run persists content_analyses + items with idempotent supersession', async (t) => {
+  if (!withDb(t) || db === null) return;
+  const f = await seed(db);
+
+  // Seed lead_contents with printer-related posts (deterministic ids + hashes).
+  const contents = [
+    { ref: 'post-1', text: 'قطعات پرینتر HP موجود است', days: 3 },
+    { ref: 'post-2', text: 'قطعات پرینتر و کارتریج — قیمت عمده', days: 8 },
+    { ref: 'post-3', text: 'قیمت عمده قطعات پرینتر لیزری', days: 20 },
+  ];
+  for (const c of contents) {
+    const publishedAt = new Date(Date.parse('2026-06-01T00:00:00.000Z') - c.days * 86_400_000).toISOString();
+    const contentHash = `it-${c.ref}`;
+    await db.query(
+      `INSERT INTO lead_contents
+         (id, lead_id, source_id, source_content_id, content_type, text, media_url, published_at, content_hash, retrieved_at, metadata)
+       VALUES ($1, $2, $3, $4, 'POST', $5, NULL, $6::timestamptz, $7, now(), '{}'::jsonb)
+       ON CONFLICT DO NOTHING`,
+      [randomUUID(), f.leadId, f.sourceId, c.ref, c.text, publishedAt, contentHash],
+    );
+  }
+
+  const { deps: flowDeps } = deps(db);
+  const outcome = await runAnalysisForLead(flowDeps, { leadId: f.leadId, analysisMode: 'STANDARD' }, {
+    tenantId: f.tenantId, jobId: f.jobId, correlationId: null,
+  });
+
+  // Content analysis persisted with the consistency of the seeded corpus.
+  const ca = await db.query<{ id: string; consistency: string; analysis_id: string | null; sampling: Record<string, unknown> }>(
+    `SELECT id, profile_content_consistency AS consistency, analysis_id, sampling
+     FROM content_analyses WHERE lead_id = $1 AND is_current = TRUE`,
+    [f.leadId],
+  );
+  assert.equal(ca.rowCount, 1, 'exactly one current content analysis');
+  const caRow = ca.rows[0]!;
+  assert.ok(['PROFILE_CONTENT_AGREE', 'PROFILE_CONTENT_PARTIAL'].includes(caRow.consistency), caRow.consistency);
+  assert.equal(caRow.analysis_id, outcome.analysisId);
+
+  const items = await db.query<{ lead_content_id: string; notes: Record<string, unknown> }>(
+    `SELECT i.lead_content_id::text, i.modality_notes AS notes
+     FROM content_analysis_items i WHERE i.content_analysis_id = $1`,
+    [caRow.id],
+  );
+  assert.ok((items.rowCount ?? 0) >= 3, `items per sampled content (got ${items.rowCount})`);
+
+  // CAPTION_TEXT evidence rows exist for the sampled items and link back.
+  const captions = await db.query<{ n: string; withContent: string }>(
+    `SELECT count(*)::text AS n,
+            count(*) FILTER (WHERE metadata->>'contentId' IS NOT NULL)::text AS "withContent"
+     FROM evidence WHERE lead_id = $1 AND evidence_type = 'CAPTION_TEXT'`,
+    [f.leadId],
+  );
+  assert.ok(Number(captions.rows[0]?.n ?? '0') >= 3);
+  assert.equal(captions.rows[0]?.n, captions.rows[0]?.withContent, 'each caption cites its content id');
+
+  // Supersession: a second job leaves TWO versions, exactly one current.
+  await db.query(`UPDATE leads SET status = 'ANALYSIS_PENDING' WHERE id = $1`, [f.leadId]);
+  const job2 = randomUUID();
+  await db.query(
+    `INSERT INTO jobs (id, tenant_id, type, payload) VALUES ($1, $2, 'REPROCESS', $3)`,
+    [job2, f.tenantId, JSON.stringify({ leadId: f.leadId, analysisMode: 'STANDARD', reason: 'it' })],
+  );
+  await runAnalysisForLead(flowDeps, { leadId: f.leadId, analysisMode: 'STANDARD' }, {
+    tenantId: f.tenantId, jobId: job2, correlationId: null,
+  });
+  const versions = await db.query<{ total: string; current: string }>(
+    `SELECT count(*)::text AS total, count(*) FILTER (WHERE is_current)::text AS current
+     FROM content_analyses WHERE lead_id = $1`,
+    [f.leadId],
+  );
+  assert.equal(versions.rows[0]?.total, '2', 'history preserved (two versions)');
+  assert.equal(versions.rows[0]?.current, '1', 'exactly one current version');
+
+  // Items of version 1 were NOT duplicated into version 2 (per-version rows).
+  const itemCount = await db.query<{ total: string }>(
+    `SELECT count(*)::text AS total FROM content_analysis_items t
+     JOIN content_analyses c ON c.id = t.content_analysis_id
+     WHERE c.lead_id = $1`,
+    [f.leadId],
+  );
+  const caCount = Number(versions.rows[0]?.total ?? '0');
+  assert.ok(Number(itemCount.rows[0]?.total ?? '0') >= caCount * 3, 'items are per-version, not duplicated');
 });

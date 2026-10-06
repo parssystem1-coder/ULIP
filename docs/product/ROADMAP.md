@@ -89,3 +89,20 @@ evaluation history with human corrections and feedback-dataset export, and
 `pnpm eval` — a deterministic regression command with committed baselines and
 a per-category release gate. Jev arms stay honestly NOT_CONFIGURED.
 See ADR-029 and docs/ai/EVALUATION-AND-BENCHMARKING.md.
+
+## Phase 18 — Instagram Content Intelligence & Multimodal Analysis (shipped)
+
+Content is a first-class analysis input (ADR-030): connector payloads become
+versioned `lead_contents` rows (POST/REEL/CAROUSEL types added), deterministically
+sampled (BASIC/STANDARD/DEEP), analyzed as text + budget-capped Vision with
+honest per-modality availability, aggregated into evidence-cited business
+signals, profile-vs-content consistency (contradictions force review), content-
+derived activity intelligence (never follower-only claims), per-item relevance
+against requested search criteria, and versioned/idempotent persistence
+(`content_analyses` + `content_analysis_items`, migration 0005). Read side:
+`GET /leads/{id}/contents` and `GET /leads/{id}/content-analysis`.
+Evaluation gains the PROFILE_ONLY / TEXT_CONTENT / TEXT_IMAGE /
+FULL_AVAILABLE_EVIDENCE arms with committed baselines. Vision remains honestly
+gated: fake provider for dev/E2E, real `HttpVisionProvider` only with
+`AI_VISION_MODEL` configured. See ADR-030 and
+prompts/phases/PHASE-18-CONTENT-INTELLIGENCE-MULTIMODAL.md.
