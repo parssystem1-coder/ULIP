@@ -27,6 +27,7 @@ import {
   DbRawEntityStore,
   DeterministicFakeConnectorFactory,
   ConfiguredHttpApiConnectorFactory,
+  InstagramGraphConnectorFactory,
   ConnectorRegistry,
   DiscoveryInputError,
   PersianAwareNormalizer,
@@ -65,7 +66,8 @@ export interface EnqueueResult {
 export function buildConnectorRegistry(): ConnectorRegistry {
   const registry = new ConnectorRegistry();
   registry.register(new ConfiguredHttpApiConnectorFactory('HTTP_API'));
-  registry.register(new ConfiguredHttpApiConnectorFactory('INSTAGRAM'));
+  // Phase 19: REAL authorized Instagram Graph connector (ADR-031).
+  registry.register(new InstagramGraphConnectorFactory());
   registry.register(new DeterministicFakeConnectorFactory());
   return registry;
 }

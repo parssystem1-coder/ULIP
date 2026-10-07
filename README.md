@@ -238,3 +238,41 @@ its own right rather than as an optional string attached to the bio:
 
 See `docs/adr/ADR-030-content-intelligence-multimodal.md` and
 `prompts/phases/PHASE-18-CONTENT-INTELLIGENCE-MULTIMODAL.md`.
+
+## Phase 19 — Real Instagram Authorized Connector & Data Acquisition (implemented)
+
+The first real source adapter (ADR-031): `InstagramGraphConnectorFactory`
+(sourceType `INSTAGRAM`, `@ulip/discovery`) replaces the Phase 15 placeholder
+and talks only to Meta's official Instagram Graph API with Facebook Login
+(`graph.facebook.com/v25.0`) with the tenant's own authorized token:
+
+- **Authorized surfaces**: Hashtag Search (`ig_hashtag_search` +
+  `top_media`/`recent_media`) and Business Discovery
+  (`business_discovery.username(...)` with profile fields + first media page).
+- **Quotas respected, never bypassed**: official 30-unique-hashtags/rolling-7d
+  quota is enforced client-side with a refusal BEFORE the network call;
+  HTTP 429 / Graph rate-limit codes map to a typed `rate_limited` error that
+  is never auto-retried.
+- **Honest capabilities**: `profile_search`, `profile_fetch`, `content_fetch`,
+  `engagement_metrics` advertised — `location` and `image_fetch` are not
+  (Graph exposes no such data on these surfaces); email/phone/city are never
+  manufactured.
+- **Evidence-first payloads**: media grouped per owner and embedded verbatim
+  as `posts` (+ `published_at`/`likes`/`comments` convenience keys), so
+  discovery → raw snapshot → normalization → dedup/ER → lead →
+  `lead_contents` → analysis runs end to end on real data; no wall-clock
+  fields keep payload hashes stable and re-runs idempotent.
+- **Typed errors & partials**: per-item Business Discovery failures degrade
+  to warnings + media-evidence-only entities (`partial: true`); auth,
+  permission, not-found, invalid-request and temporary kinds are distinct;
+  the access token never appears in any error or log.
+- **Pagination**: opaque, strictly-validated cursors flow through the
+  existing discovery-job `cursor` field — no pipeline changes.
+- **Live smoke (optional)**: `pnpm smoke:instagram`, env-gated; prints
+  `NOT_CONFIGURED` and exits 0 without credentials. The connector itself is
+  tested against a deterministic fake Graph server (23 tests), not the live
+  API.
+
+See `docs/adr/ADR-031-instagram-authorized-connector.md`,
+`docs/connectors/INSTAGRAM-CONNECTOR.md` and
+`prompts/phases/PHASE-19-INSTAGRAM-AUTHORIZED-CONNECTOR.md`.

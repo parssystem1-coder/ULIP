@@ -24,14 +24,21 @@ interface LeadSourceConnector {
 
 ```text
 ConnectorRegistry
-  ├── Instagram
-  ├── GoogleMaps
-  ├── LinkedIn
-  ├── YouTube
-  ├── Facebook
-  ├── Website
-  └── CSV
+  ├── Instagram        ✅ IMPLEMENTED (Phase 19, ADR-031) — authorized Instagram Graph API
+  ├── HTTP_API         ✅ generic authorized-HTTP boundary (advertises nothing until a real adapter backs it)
+  ├── FAKE             ✅ deterministic E2E-only provider (never in production)
+  ├── GoogleMaps       ⬜ future — same factory + registration pattern
+  ├── LinkedIn         ⬜ future
+  ├── YouTube          ⬜ future
+  ├── Facebook         ⬜ future
+  ├── Website          ⬜ future
+  └── CSV              ⬜ future
 ```
+
+See `docs/connectors/INSTAGRAM-CONNECTOR.md` and
+`docs/adr/ADR-031-instagram-authorized-connector.md` for the implemented
+Instagram adapter (capabilities, config, quotas, error mapping, payload
+shape).
 
 ## Test strategy
 

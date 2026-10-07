@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { buildConnectorRegistry } from '../src/main.ts';
-import { ConfiguredHttpApiConnectorFactory, ConnectorRegistry } from '@ulip/discovery';
+import { ConfiguredHttpApiConnectorFactory, ConnectorRegistry, InstagramGraphConnectorFactory } from '@ulip/discovery';
 
 const T1 = '11111111-1111-1111-1111-111111111111';
 const SRC = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -21,9 +21,23 @@ test('worker registry exposes production boundary + fake (for E2E only)', () => 
 });
 
 test('configured boundary validates https + token without any network call', () => {
-  const f = new ConfiguredHttpApiConnectorFactory('INSTAGRAM');
+  const f = new ConfiguredHttpApiConnectorFactory('HTTP_API');
   assert.equal(f.canBuild({}).ok, false);
   assert.equal(f.canBuild({ provider: 'ig' }).ok, false);
   assert.equal(f.canBuild({ provider: 'ig', apiBaseUrl: 'http://insecure.test' }).ok, false);
   assert.equal(f.canBuild({ provider: 'ig', apiBaseUrl: 'https://ok.test', apiToken: 't' }).ok, true);
+});
+
+test('Phase 19: INSTAGRAM factory validates instagram-graph config without network', () => {
+  const f = new InstagramGraphConnectorFactory();
+  assert.equal(f.canBuild({}).ok, false);
+  assert.equal(f.canBuild({ provider: 'instagram-graph' }).ok, false); // no token
+  assert.equal(
+    f.canBuild({ provider: 'instagram-graph', accessToken: 't', igUserId: '17841405309211844' }).ok,
+    true,
+  );
+  assert.equal(
+    f.canBuild({ provider: 'instagram-graph', accessToken: 't', igUserId: '17841405309211844', graphBaseUrl: 'http://insecure.test' }).ok,
+    false,
+  );
 });

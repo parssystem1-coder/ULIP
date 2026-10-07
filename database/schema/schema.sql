@@ -398,8 +398,35 @@ CREATE TABLE lead_contents (
 
 CREATE INDEX idx_content_lead_published ON lead_contents (lead_id, published_at DESC);
 
+-- =====================================================================
+-- 6. ANALYSIS / EVIDENCE   (current-version semantics)
+-- =====================================================================
+
+CREATE TABLE lead_analyses (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id           UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  analysis_version  TEXT NOT NULL,
+  model_version     TEXT,
+  prompt_version    TEXT,
+  schema_version    TEXT,
+  taxonomy_version  INTEGER NOT NULL DEFAULT 1,
+  analysis_mode     analysis_mode NOT NULL DEFAULT 'STANDARD',
+  summary           TEXT,
+  structured_output JSONB NOT NULL,
+  confidence        NUMERIC(5,4) CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+  is_current        BOOLEAN NOT NULL DEFAULT TRUE,
+  superseded_at     TIMESTAMPTZ,          -- NULL while current
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (is_current = TRUE OR superseded_at IS NOT NULL)
+);
+
+-- Exactly one current analysis per lead.
+CREATE UNIQUE INDEX uniq_leads_analysis_current ON lead_analyses (lead_id) WHERE is_current = TRUE;
+CREATE INDEX idx_leads_analysis_current_existence ON lead_analyses (lead_id, confidence DESC) WHERE is_current = TRUE;
+
 -- Content intelligence (Phase 18, ADR-030): ONE versioned content-analysis
 -- result per lead run. Current-version semantics mirror lead_analyses.
+-- NOTE: declared AFTER lead_analyses because of the analysis_id FK.
 CREATE TABLE content_analyses (
   id                UUID PRIMARY KEY,             -- deterministic (idempotent replays)
   lead_id           UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -453,32 +480,6 @@ CREATE INDEX idx_content_analysis_items_analysis
   ON content_analysis_items (content_analysis_id);
 CREATE INDEX idx_content_analysis_items_content
   ON content_analysis_items (lead_content_id);
-
--- =====================================================================
--- 6. ANALYSIS / EVIDENCE   (current-version semantics)
--- =====================================================================
-
-CREATE TABLE lead_analyses (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id           UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-  analysis_version  TEXT NOT NULL,
-  model_version     TEXT,
-  prompt_version    TEXT,
-  schema_version    TEXT,
-  taxonomy_version  INTEGER NOT NULL DEFAULT 1,
-  analysis_mode     analysis_mode NOT NULL DEFAULT 'STANDARD',
-  summary           TEXT,
-  structured_output JSONB NOT NULL,
-  confidence        NUMERIC(5,4) CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
-  is_current        BOOLEAN NOT NULL DEFAULT TRUE,
-  superseded_at     TIMESTAMPTZ,          -- NULL while current
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (is_current = TRUE OR superseded_at IS NOT NULL)
-);
-
--- Exactly one current analysis per lead.
-CREATE UNIQUE INDEX uniq_leads_analysis_current ON lead_analyses (lead_id) WHERE is_current = TRUE;
-CREATE INDEX idx_leads_analysis_current_existence ON lead_analyses (lead_id, confidence DESC) WHERE is_current = TRUE;
 
 CREATE TABLE evidence (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

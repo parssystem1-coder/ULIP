@@ -18,6 +18,15 @@ import type {
 /** Absolute degradation beyond this counts as a regression (per severity). */
 export const REGRESSION_THRESHOLDS = { CRITICAL: 0.1, MAJOR: 0.05, MINOR: 0.02 } as const;
 
+/**
+ * Latency lives on a MILLISECOND scale, not the 0–1 rate scale of every other
+ * metric — comparing ms deltas against the rate thresholds made 1 ms of
+ * machine noise a CRITICAL regression. Latency gets its own absolute-ms
+ * tolerances (sub-10 ms differences are scheduler/clock noise; 50 ms+ is a
+ * real degradation). Accuracy/rate gates are unchanged.
+ */
+export const LATENCY_THRESHOLDS_MS = { CRITICAL: 50, MAJOR: 25, MINOR: 10 } as const;
+
 type Direction = 'HIGHER_IS_BETTER' | 'LOWER_IS_BETTER';
 
 interface MetricSpec {
@@ -57,9 +66,9 @@ function specsFor(template: EvalRunMetrics): MetricSpec[] {
   return specs;
 }
 
-function severityFor(delta: number): RegressionFinding['severity'] {
-  if (delta >= REGRESSION_THRESHOLDS.CRITICAL) return 'CRITICAL';
-  if (delta >= REGRESSION_THRESHOLDS.MAJOR) return 'MAJOR';
+function severityFor(delta: number, thresholds: { CRITICAL: number; MAJOR: number; MINOR: number }): RegressionFinding['severity'] {
+  if (delta >= thresholds.CRITICAL) return 'CRITICAL';
+  if (delta >= thresholds.MAJOR) return 'MAJOR';
   return 'MINOR';
 }
 
@@ -78,18 +87,19 @@ export function compareRuns(baseline: EvalRunRecord, current: EvalRunRecord): Re
     const curr = spec.get(current.metrics);
     const delta = Math.round((curr - base) * 10_000) / 10_000;
     const worsened = spec.direction === 'HIGHER_IS_BETTER' ? delta < 0 : delta > 0;
+    const thresholds = spec.category === 'latency' ? LATENCY_THRESHOLDS_MS : REGRESSION_THRESHOLDS;
     const magnitude = Math.abs(delta);
-    if (worsened && magnitude > REGRESSION_THRESHOLDS.MINOR) {
+    if (worsened && magnitude > thresholds.MINOR) {
       findings.push({
         metric: spec.path,
         category: spec.category,
         baseline: base,
         current: curr,
         delta,
-        threshold: REGRESSION_THRESHOLDS.MINOR,
-        severity: severityFor(magnitude),
+        threshold: thresholds.MINOR,
+        severity: severityFor(magnitude, thresholds),
       });
-    } else if (!worsened && magnitude > REGRESSION_THRESHOLDS.MINOR) {
+    } else if (!worsened && magnitude > thresholds.MINOR) {
       improved.push({ metric: spec.path, delta });
     }
   }

@@ -16,7 +16,8 @@
     "dev:api": "tsx --tsconfig apps/api/tsconfig.json apps/api/src/main.ts",
     "dev:worker": "tsx --tsconfig apps/worker/tsconfig.json apps/worker/src/main.ts",
     "dev:web": "pnpm --filter @ulip/web dev",
-    "smoke": "node --experimental-strip-types infra/scripts/smoke.ts"
+    "smoke": "node --experimental-strip-types infra/scripts/smoke.ts",
+    "smoke:instagram": "node --experimental-strip-types infra/scripts/instagram-smoke.ts"
   },
   "dependencies": {
     "@ulip/connectors": "workspace:*",

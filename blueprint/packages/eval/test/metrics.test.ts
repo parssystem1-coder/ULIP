@@ -302,3 +302,21 @@ test('regression: dataset version change is flagged, improvements are listed', (
   const text = renderRegressionReport(report);
   assert.match(text, /CHANGED vs baseline/);
 });
+
+test('regression: latency uses ms-scaled tolerances (1 ms of machine noise is not a regression)', () => {
+  // Nudge mean latency by ~1 ms (machine/clock noise around the 0/1 boundary).
+  const current = JSON.parse(JSON.stringify(BASE_METRICS)) as EvalRunRecord['metrics'];
+  current.latency.meanMs = (current.latency.meanMs ?? 0) + 1;
+  const report = compareRuns(makeRun('base', BASE_METRICS), makeRun('cur', current));
+  assert.equal(report.findings.some((f) => f.metric === 'latency.meanMs'), false);
+  assert.equal(report.hasRegressions, false);
+
+  // A real latency degradation (100 ms slower) is still caught — CRITICAL.
+  const muchSlower = JSON.parse(JSON.stringify(BASE_METRICS)) as EvalRunRecord['metrics'];
+  muchSlower.latency.meanMs = (muchSlower.latency.meanMs ?? 0) + 100;
+  const blocked = compareRuns(makeRun('base', BASE_METRICS), makeRun('cur', muchSlower));
+  const f = blocked.findings.find((x) => x.metric === 'latency.meanMs');
+  assert.ok(f !== undefined);
+  assert.equal(f.severity, 'CRITICAL');
+  assert.equal(blocked.hasRegressions, true);
+});

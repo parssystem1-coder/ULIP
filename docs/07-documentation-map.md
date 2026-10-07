@@ -49,3 +49,7 @@ When code differs from architecture, either update the architecture or create an
   `computeDimensions`, `DbAnalysisStore`, `runAnalysisFlow`)
 - `docs/ai/TASK-CONTRACTS.md` — prose mirror of the typed AI contracts,
   including the implemented provider-selection/validation contract
+- `docs/adr/ADR-031-instagram-authorized-connector.md` +
+  `docs/connectors/INSTAGRAM-CONNECTOR.md` — the real authorized Instagram
+  Graph connector (`@ulip/discovery` `instagram.ts`, Phase 19; optional live
+  smoke via `pnpm smoke:instagram`)

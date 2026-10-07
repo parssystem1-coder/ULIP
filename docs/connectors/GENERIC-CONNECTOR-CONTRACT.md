@@ -72,8 +72,11 @@ Connector factories register per source type in `ConnectorRegistry`
   fake used outside explicit E2E opt-in.
 - `RESOLVED` — usable; capability checks still gate every call.
 
-Registered today: `INSTAGRAM`/`HTTP_API` (ConfiguredHttpApiConnectorFactory —
-credential-validating production boundary, advertises nothing until a real
-authorized adapter exists) and `FAKE` (DeterministicFakeConnectorFactory —
-E2E only). Registering the next authorized provider is one factory + one
-`registry.register(...)` call; pipeline/API/worker/storage stay unchanged.
+Registered today: `INSTAGRAM` (InstagramGraphConnectorFactory — the REAL
+authorized Instagram Graph API adapter, Phase 19/ADR-031: hashtag search +
+business discovery, client-side quota enforcement, typed error mapping) and
+`HTTP_API` (ConfiguredHttpApiConnectorFactory — credential-validating generic
+boundary, advertises nothing until a real provider adapter backs it) and
+`FAKE` (DeterministicFakeConnectorFactory — E2E only). Registering the next
+authorized provider is one factory + one `registry.register(...)` call;
+pipeline/API/worker/storage stay unchanged.

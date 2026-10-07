@@ -3,7 +3,7 @@
  * Single Database instance; connections are pooled and closed on shutdown.
  */
 
-import { ConnectorRegistry, ConfiguredHttpApiConnectorFactory, DeterministicFakeConnectorFactory } from '@ulip/discovery';
+import { ConnectorRegistry, ConfiguredHttpApiConnectorFactory, DeterministicFakeConnectorFactory, InstagramGraphConnectorFactory } from '@ulip/discovery';
 import { DbEvalStore } from '@ulip/eval';
 import { DbOrchestrator } from '@ulip/orchestration';
 import { Database, JobQueue, loadEnv, Logger, type Env } from '@ulip/runtime';
@@ -49,7 +49,9 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
   const queue = new JobQueue(env.REDIS_URL);
   const connectorRegistry = new ConnectorRegistry();
   connectorRegistry.register(new ConfiguredHttpApiConnectorFactory('HTTP_API'));
-  connectorRegistry.register(new ConfiguredHttpApiConnectorFactory('INSTAGRAM'));
+  // Phase 19: REAL authorized Instagram Graph connector (ADR-031). Resolves
+  // only when the source row config carries instagram-graph credentials.
+  connectorRegistry.register(new InstagramGraphConnectorFactory());
   connectorRegistry.register(new DeterministicFakeConnectorFactory());
 
   const ctx: AppContext = {

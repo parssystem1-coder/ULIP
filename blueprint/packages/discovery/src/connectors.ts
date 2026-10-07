@@ -152,11 +152,10 @@ export class DeterministicFakeConnectorFactory implements ConnectorFactory {
 }
 
 /**
- * Production source boundary. Currently the only authorized API path that can
- * be configured is an arbitrary HTTP API the tenant legally controls. When an
- * authorized Instagram Graph integration becomes available, register a
- * factory with sourceType 'INSTAGRAM' here — nothing else in the pipeline
- * changes.
+ * Production source boundary for arbitrary authorized HTTP APIs the tenant
+ * legally controls (sourceType 'HTTP_API'). The REAL authorized Instagram
+ * Graph adapter lives in ./instagram.ts (Phase 19, ADR-031) and registers
+ * under sourceType 'INSTAGRAM' — nothing else in the pipeline changes.
  */
 export class ConfiguredHttpApiConnectorFactory implements ConnectorFactory {
   readonly sourceType: string;

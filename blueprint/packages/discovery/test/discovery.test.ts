@@ -64,17 +64,17 @@ test('connector registry: FAKE refused outside explicit fake mode (honest gate)'
   assert.equal(allowed.isDeterministicFake, true);
 });
 
-test('connector registry: configured production type without credentials ⇒ NOT_CONFIGURED', () => {
+test('connector registry: generic HTTP boundary keeps honest no-capability semantics', () => {
   const registry = new ConnectorRegistry();
-  registry.register(new ConfiguredHttpApiConnectorFactory('INSTAGRAM'));
-  const unconfigured = registry.resolveFor(makeSource(SRC1, T1, 'INSTAGRAM', {}));
+  registry.register(new ConfiguredHttpApiConnectorFactory('HTTP_API'));
+  const unconfigured = registry.resolveFor(makeSource(SRC1, T1, 'HTTP_API', {}));
   assert.equal(unconfigured.status, 'NOT_CONFIGURED');
   assert.match(unconfigured.reason ?? '', /provider is required/);
 
-  // Fully configured boundary resolves, but advertises NO discovery capability
-  // until the authorized provider adapter is actually implemented.
+  // The generic boundary resolves when fully configured but advertises NO
+  // discovery capability — it has no provider adapter behind it.
   const configured = registry.resolveFor(
-    makeSource(SRC2, T1, 'INSTAGRAM', { provider: 'instagram-graph', apiBaseUrl: 'https://graph.example.test/v1', apiToken: 'tok_abc' }),
+    makeSource(SRC2, T1, 'HTTP_API', { provider: 'p', apiBaseUrl: 'https://api.example.test', apiToken: 'tok_abc' }),
   );
   assert.equal(configured.status, 'RESOLVED');
   assert.equal(configured.connector?.supports('profile_search'), false);
