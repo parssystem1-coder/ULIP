@@ -16,6 +16,12 @@ interface SearchReason {
   detail: string;
 }
 
+interface Identity {
+  sourceType: string;
+  username: string | null;
+  profileUrl: string | null;
+}
+
 interface SearchLead {
   id: string;
   status: string;
@@ -24,6 +30,7 @@ interface SearchLead {
   searchScore: number;
   reasons: SearchReason[];
   contentMatches: string[];
+  identities: Identity[];
 }
 
 interface PlanStep {
@@ -50,6 +57,13 @@ interface Lead {
   businessId: string;
   canonicalName?: string | null;
   createdAt: string;
+  identities: Identity[];
+}
+
+function identityCell(identities: Identity[] | undefined): string {
+  const first = identities?.find((i) => i.username !== null && i.username !== '');
+  if (first === undefined) return '—';
+  return first.profileUrl !== null ? `@${first.username}` : `@${first.username} (${first.sourceType})`;
 }
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -133,7 +147,7 @@ export default function LeadsPage() {
           <table cellPadding={6} style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
-                <th>score</th><th>name</th><th>status</th><th>city</th><th>why</th>
+                <th>score</th><th>name</th><th>identity</th><th>status</th><th>city</th><th>why</th>
               </tr>
             </thead>
             <tbody>
@@ -141,6 +155,7 @@ export default function LeadsPage() {
                 <tr key={l.id}>
                   <td>{l.searchScore.toFixed(0)}</td>
                   <td>{l.canonicalName}</td>
+                  <td style={{ fontSize: 12 }}>{identityCell(l.identities)}</td>
                   <td>{l.status}</td>
                   <td>{l.city ?? '—'}</td>
                   <td style={{ fontSize: 12 }}>
@@ -153,7 +168,7 @@ export default function LeadsPage() {
               ))}
               {result.data.length === 0 && (
                 <tr>
-                  <td colSpan={5}>No leads matched this query yet.</td>
+                  <td colSpan={6}>No leads matched this query yet.</td>
                 </tr>
               )}
             </tbody>
@@ -181,7 +196,7 @@ export default function LeadsPage() {
       <table cellPadding={8} style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th>id</th><th>status</th><th>business</th><th>first seen</th>
+            <th>id</th><th>status</th><th>business</th><th>identity</th><th>first seen</th>
           </tr>
         </thead>
         <tbody>
@@ -190,6 +205,7 @@ export default function LeadsPage() {
               <td>{l.id.slice(0, 8)}…</td>
               <td>{l.status}</td>
               <td>{l.canonicalName ?? `${l.businessId.slice(0, 8)}…`}</td>
+              <td style={{ fontSize: 12 }}>{identityCell(l.identities)}</td>
               <td>{new Date(l.createdAt).toLocaleString('fa-IR')}</td>
             </tr>
           ))}
