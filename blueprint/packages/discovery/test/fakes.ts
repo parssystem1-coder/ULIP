@@ -125,6 +125,9 @@ export async function runTestDiscovery(
   const registry = new (await import('../src/index.ts')).ConnectorRegistry();
   registry.register(new DeterministicFakeConnectorFactory());
   const { PersianAwareNormalizer } = await import('../src/index.ts');
+  // Test helper: explicitly opts into the deterministic fake (local E2E only),
+  // mirroring what the API writes into a real allowFake discovery job payload.
+  const withFakeOptIn = { ...(payload as Record<string, unknown>), allowFake: true };
   return runDiscovery(
     {
       log: deps.log ?? { info: () => undefined, error: () => undefined },
@@ -135,7 +138,7 @@ export async function runTestDiscovery(
       connectorRegistry: registry,
       ...(deps.contentIngestor !== undefined ? { contentIngestor: deps.contentIngestor } : {}),
     },
-    payload,
+    withFakeOptIn,
     context,
   );
 }

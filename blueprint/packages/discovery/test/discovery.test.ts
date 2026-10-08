@@ -161,3 +161,32 @@ test('ConnectorNotAvailableError carries the honest status', () => {
   assert.equal(e.resolutionStatus, 'NOT_CONFIGURED');
   assert.match(e.message, /NOT_CONFIGURED/);
 });
+
+test('discovery flow: fake connector refused WITHOUT explicit payload allowFake opt-in (Phase 20 preflight fix)', async () => {
+  const store = new FakeRawEntityStore();
+  const resolver = new FakeResolver();
+  const registry = new ConnectorRegistry();
+  registry.register(new DeterministicFakeConnectorFactory());
+  const { runDiscovery, PersianAwareNormalizer } = await import('../src/index.ts');
+  // Same FAKE source as the E2E tests, but the job payload does NOT carry
+  // allowFake:true — the flow must refuse the fake instead of running it.
+  await assert.rejects(
+    () =>
+      runDiscovery(
+        {
+          log: { info: () => undefined, error: () => undefined },
+          sources: new FakeSources([flowSource(SRC1, T1)]),
+          rawEntities: store,
+          normalizer: new PersianAwareNormalizer(),
+          resolver,
+          connectorRegistry: registry,
+        },
+        { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 5 },
+        { tenantId: T1 },
+      ),
+    (err: Error) =>
+      err.name === 'ConnectorNotAvailableError' && /allowDeterministicFakes/.test(err.message),
+  );
+  assert.equal(store.rows.length, 0);
+  assert.equal(resolver.leads.length, 0);
+});

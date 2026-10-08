@@ -124,6 +124,44 @@ sort
 
 ---
 
+# 5b. Natural-Language Search (Phase 20)
+
+```http
+POST /api/v1/leads/search/natural-language
+Content-Type: application/json
+
+{ "text": "عمده‌فروشان قطعات پرینتر HP در تهران", "locale": "fa",
+  "mode": "EXISTING_ONLY", "page": 1, "limit": 50 }
+```
+
+Persian-first (fa/en). The response is always honest about provenance:
+
+- `parser.kind` = `LLM` (AI runtime READY) or `RULES_FALLBACK` (deterministic
+  Persian-aware rules parser — used automatically when AI is NOT_CONFIGURED or
+  the LLM output fails validation). The parser is ALWAYS named.
+- `structuredQuery` is the typed `LeadSearchFilters` surface — the LLM never
+  emits SQL or raw filter expressions; its output is sanitized before use.
+- `resolution` shows taxonomy resolution per term (ID/SLUG/NAME/ALIAS) and
+  lists unresolved terms — which ALSO fall back to content-aware free-text
+  matching (`resolution.contentTerms`) against name/description/lead content.
+- `data[]` is deterministically ranked: `searchScore` 0..100 (policy priority
+  → relevance → neutral 50 baseline + fixed per-dimension boosts) with
+  `reasons[]` explaining every point (no chain-of-thought).
+- `execution.discoveryPlan` capability-checks every ACTIVE source through the
+  real ConnectorRegistry: `SUPPORTED` / `PARTIAL` / `UNSUPPORTED` verdicts
+  with reasons. Instagram is honest: only hashtag/username discovery exists,
+  broad semantic/location queries are PARTIAL/UNSUPPORTED. With
+  `mode=DISCOVER_WHEN_SUPPORTED` the first SUPPORTED step is executed (fake
+  sources additionally require `allowFake: true`).
+
+`GET /api/v1/leads` uses the SAME engine for structured filtering:
+`businessType`, `industry`, `specialty`, `subSpecialty`, `brand`, `city`,
+`country`, `source`, `status`, `minRelevance`, `minAudienceQuality`,
+`minActivity`, `sort`, `order`, `page`, `limit` — parameterized SQL only
+(SQL-injection safe), tenant-scoped, deterministic tiebreak.
+
+---
+
 # 6. Lead Detail
 
 ```http

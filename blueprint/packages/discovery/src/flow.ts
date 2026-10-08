@@ -68,7 +68,13 @@ export async function runDiscovery(
     throw new DiscoveryInputError(`source ${payload.sourceId} not found in tenant ${context.tenantId}`);
   }
 
-  const resolution = deps.connectorRegistry.resolveFor(source, { allowDeterministicFakes: true });
+  // Phase 20 preflight fix (ADR-027 hardening): deterministic fake connectors
+  // resolve ONLY when the job payload explicitly opts in (`allowFake: true`,
+  // local E2E only). Production jobs never carry the opt-in, so fakes are
+  // refused here instead of being selected silently.
+  const resolution = deps.connectorRegistry.resolveFor(source, {
+    allowDeterministicFakes: payload.allowFake === true,
+  });
   if (resolution.status !== 'RESOLVED' || resolution.connector === undefined) {
     throw new ConnectorNotAvailableError(resolution.status, resolution.reason ?? 'unresolved connector');
   }

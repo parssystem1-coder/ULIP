@@ -36,6 +36,7 @@ import {
   listLeads,
   listSources,
   listTaxonomy,
+  naturalLanguageSearch,
   readyHandler,
   reprocessLead,
 } from './controllers.ts';
@@ -61,6 +62,8 @@ export async function createApiServer(app: AppContext): Promise<Server> {
   // leads
   router.add('GET', '/leads', listLeads(app));
   router.add('POST', '/leads', createLead(app));
+  // Phase 20: Persian-first natural-language search (must precede /leads/:leadId)
+  router.add('POST', '/leads/search/natural-language', naturalLanguageSearch(app));
 
   // lead analysis (Phase 16, ADR-028) — OPENAPI.yaml /leads/{leadId}/...
   router.add('GET', '/leads/:leadId', getLead(app));

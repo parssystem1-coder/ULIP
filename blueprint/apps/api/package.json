@@ -10,11 +10,13 @@
     "dev": "tsx src/main.ts"
   },
   "dependencies": {
+    "@ulip/ai": "workspace:*",
     "@ulip/analysis": "workspace:*",
     "@ulip/discovery": "workspace:*",
     "@ulip/eval": "workspace:*",
     "@ulip/orchestration": "workspace:*",
     "@ulip/runtime": "workspace:*",
+    "@ulip/search": "workspace:*",
     "pg": "^8.13.1"
   },
   "devDependencies": {

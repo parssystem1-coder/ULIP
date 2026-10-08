@@ -242,3 +242,50 @@ ANALYSIS_PENDING → ANALYZING → evidence → AI extraction → validation
   5/5 on real PostgreSQL.
 - Jev remains unplugged: no DecisionProvider is required for RULES_ONLY or
   LLM_ONLY execution.
+
+## Phase 20 — Natural Language Search & Search Execution (implemented)
+
+NL search is now wired end-to-end through a single engine (`@ulip/search`,
+new) that both entry points share:
+
+```text
+text → parse (LLM | deterministic rules) → sanitize into LeadSearchFilters
+     → tenant-scoped taxonomy resolution (id/slug/name/alias + location_aliases)
+     → parameterized SQL execution → deterministic ranking with reasons
+     → capability-aware discovery plan
+```
+
+- **Parsing** — reuses the existing `parseSearchQuery` contract (HTTP LLM when
+  READY; `RULES_FALLBACK` deterministic Persian-first parser otherwise). LLM
+  output is sanitized into typed filters only (never SQL, never raw
+  expressions); locale is detected fa/en/mixed; empty/oversized text → 400.
+- **Taxonomy resolution** — `DbTaxonomyResolver` resolves terms via
+  taxonomy_nodes (id, slug, name), `taxonomy_node_aliases` (alias_norm) and
+  `location_aliases` for cities; tenant-scoped; unresolved terms are reported
+  AND fall back to content-aware free-text matching.
+- **Execution** — `DbSearchExecutor`: parameterized SQL only (LIKE-escaped,
+  NUL-stripped), unconditional tenant scoping, all nine match flags computed
+  in SQL, page-based pagination with deterministic tiebreak, score-threshold
+  filters (minRelevance/AudienceQuality/Activity/Confidence), content-aware
+  free-text over name/description/lead_contents with bounded snippets.
+- **Ranking** — deterministic composite 0..100 (policy priority → relevance →
+  neutral 50 baseline + fixed per-dimension boosts) with structured
+  `reasons[]` per lead (no chain-of-thought).
+- **Discovery planning** — `CapabilityDiscoveryPlanner` checks every ACTIVE
+  source through the real ConnectorRegistry; honest per-source verdicts
+  (SUPPORTED/PARTIAL/UNSUPPORTED with reasons); Instagram reports broad
+  semantic/location discovery as unavailable (only hashtag/username discovery
+  exists); `mode=DISCOVER_WHEN_SUPPORTED` executes the first SUPPORTED step
+  (DB-persisted job first, BullMQ transport second; fake sources require the
+  explicit `allowFake` opt-in).
+- **API** — `POST /leads/search/natural-language` (parser provenance always
+  named) and upgraded `GET /leads` (same engine, full structured filters,
+  page-based pagination). OpenAPI schemas added/synced.
+- **UI** — minimal NL search surface on the leads page (Persian placeholder,
+  parser provenance, ranked results with reasons, honest discovery plan).
+- **Verified** (real PostgreSQL + Redis + API + worker): 19/19 API
+  integration tests green — NL search shape + parser honesty, structured
+  filtering, SQL-injection payloads, tenant isolation, discovery idempotency
+  mismatch → 409, analysis E2E (fake AI), discovery E2E. `pnpm typecheck`,
+  `pnpm lint`, `pnpm test` (261 tests), `pnpm build`, OpenAPI validation and
+  `pnpm eval` (release gate PASS) all green.

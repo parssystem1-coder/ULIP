@@ -365,7 +365,21 @@ paths:
       summary: Natural-language search (Persian first-class)
       description: |
         Parses user text (fa/en) into a typed StructuredSearchQuery and executes it.
-        The LLM never emits SQL or raw filter expressions.
+        The LLM never emits SQL or raw filter expressions, and its output is
+        sanitized into LeadSearchFilters before execution. When the AI runtime is
+        NOT_CONFIGURED (or the LLM output is invalid) a deterministic Persian-first
+        rules parser takes over — the response always names the parser used. Every
+        tenant's ACTIVE sources are capability-checked for discovery planning:
+        verdicts are honest (SUPPORTED/PARTIAL/UNSUPPORTED); the authorized
+        Instagram Graph API reports broad semantic/location discovery as
+        UNSUPPORTED-because-PARTIAL (only hashtag/username discovery exists).
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
       requestBody:
         required: true
         content:
@@ -374,16 +388,30 @@ paths:
               type: object
               required: [text]
               properties:
-                text: { type: string, example: "عمده‌فروشان قطعات پرینتر HP در تهران" }
+                text: { type: string, maxLength: 1000, example: "عمده‌فروشان قطعات پرینتر HP در تهران" }
+                locale: { type: string, enum: [fa, en], description: "Locale hint for the parser; default fa" }
+                mode:
+                  type: string
+                  enum: [EXISTING_ONLY, DISCOVER_WHEN_SUPPORTED]
+                  default: EXISTING_ONLY
+                allowFake:
+                  type: boolean
+                  default: false
+                  description: "Explicit opt-in to EXECUTE a deterministic-fake discovery source (local E2E only). Never enables fake discovery implicitly."
+                page: { type: integer, minimum: 1 }
+                limit: { type: integer, minimum: 1, maximum: 200 }
+                sort:
+                  type: array
+                  items: { $ref: '#/components/schemas/SortSpec' }
       responses:
         '200':
-          description: OK
+          description: OK — parsed query, execution, ranked leads with deterministic reasons and a discovery plan
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LeadListResponse'
+                $ref: '#/components/schemas/NaturalLanguageSearchResponse'
         '400':
-          description: Ambiguous/unparseable query
+          description: Empty/oversized text or validation failure
           content:
             application/json:
               schema:
@@ -2025,6 +2053,200 @@ components:
           items:
             $ref: '#/components/schemas/Lead'
         pagination: { $ref: '#/components/schemas/Pagination' }
+    # ---------------- search execution (Phase 20) ----------------
+    SearchReason:
+      type: object
+      required: [type, detail]
+      properties:
+        type:
+          type: string
+          enum: [BUSINESS_TYPE_MATCH, INDUSTRY_MATCH, SPECIALTY_MATCH, SUB_SPECIALTY_MATCH, BRAND_MATCH, CITY_MATCH, COUNTRY_MATCH, CONTENT_RELEVANCE, NAME_MATCH, ACTIVITY_MATCH, HIGH_CONFIDENCE, PRIORITY_BASELINE]
+        detail: { type: string }
+    SearchScores:
+      type: object
+      properties:
+        relevance: { type: number, nullable: true }
+        audienceQuality: { type: number, nullable: true }
+        activity: { type: number, nullable: true }
+        confidence: { type: number, nullable: true }
+        priority: { type: number, nullable: true }
+    SearchLead:
+      type: object
+      required: [id, businessId, status, canonicalName, searchScore, reasons]
+      properties:
+        id: { type: string, format: uuid }
+        businessId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/LeadStatus' }
+        canonicalName: { type: string }
+        description: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        identities:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceType: { type: string }
+              externalId: { type: string }
+              username: { type: string, nullable: true }
+              profileUrl: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        scores:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SearchScores' }]
+        searchScore: { type: number, description: "0..100 deterministic composite; baseline = policy priority → relevance → neutral 50 + fixed per-dimension boosts" }
+        reasons:
+          type: array
+          items: { $ref: '#/components/schemas/SearchReason' }
+        contentMatches:
+          type: array
+          items: { type: string }
+          description: "Bounded content snippets that matched the free-text terms"
+        createdAt: { type: string, format: date-time }
+    SearchPaginationResult:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1, maximum: 200 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 1 }
+    SearchResolutionTerm:
+      type: object
+      required: [field, term, nodeId, via]
+      properties:
+        field: { type: string, enum: [businessTypes, industries, specialties, subSpecialties] }
+        term: { type: string }
+        nodeId: { type: string, format: uuid, nullable: true }
+        via: { type: string, enum: [ID, SLUG, NAME, ALIAS, UNRESOLVED] }
+    SearchResolution:
+      type: object
+      required: [terms, unresolved, contentTerms]
+      properties:
+        terms:
+          type: array
+          items: { $ref: '#/components/schemas/SearchResolutionTerm' }
+        unresolved:
+          type: array
+          items: { type: string }
+        city:
+          type: object
+          nullable: true
+          properties:
+            raw: { type: string }
+            canonical: { type: string }
+            country: { type: string, nullable: true }
+        contentTerms:
+          type: array
+          items: { type: string }
+          description: "Unresolved terms that fell back to content-aware free-text matching"
+    SortSpec:
+      type: object
+      required: [field, direction]
+      properties:
+        field: { type: string, enum: [relevance, priority, activity, audienceQuality, createdAt] }
+        direction: { type: string, enum: [ASC, DESC] }
+    DiscoveryPlanStep:
+      type: object
+      required: [sourceId, sourceType, sourceName, sourceStatus, connectorResolution, isDeterministicFake, verdict, reason]
+      properties:
+        sourceId: { type: string, format: uuid }
+        sourceType: { type: string }
+        sourceName: { type: string }
+        sourceStatus: { type: string }
+        connectorResolution: { type: string, enum: [RESOLVED, UNKNOWN_SOURCE_TYPE, NOT_CONFIGURED, UNSUPPORTED] }
+        isDeterministicFake: { type: boolean }
+        verdict: { type: string, enum: [SUPPORTED, PARTIAL, UNSUPPORTED] }
+        reason: { type: string, description: "Honest capability reason — Instagram broad semantic discovery is explicitly not claimed" }
+        proposedQuery: { type: string, nullable: true }
+        proposedFilters:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+    LeadSearchFilters:
+      type: object
+      description: "Typed filter surface — the ONLY shape a search may execute (LLM output is sanitized into this)"
+      properties:
+        businessTypes:
+          type: array
+          items: { type: string }
+        industries:
+          type: array
+          items: { type: string }
+        specialties:
+          type: array
+          items: { type: string }
+        subSpecialties:
+          type: array
+          items: { type: string }
+        brands:
+          type: array
+          items: { type: string }
+        city: { type: string }
+        country: { type: string }
+        sourceType: { type: string }
+        status: { $ref: '#/components/schemas/LeadStatus' }
+        minRelevance: { type: number, minimum: 0, maximum: 100 }
+        minAudienceQuality: { type: number, minimum: 0, maximum: 100 }
+        minActivity: { type: number, minimum: 0, maximum: 100 }
+        minConfidence: { type: number, minimum: 0, maximum: 100 }
+    SearchPagination:
+      type: object
+      properties:
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1, maximum: 200 }
+        cursor: { type: string, nullable: true }
+    StructuredSearchQuery:
+      type: object
+      description: "The canonical validated query object reused across NL and structured search"
+      required: [filters, pagination]
+      properties:
+        filters: { $ref: '#/components/schemas/LeadSearchFilters' }
+        pagination: { $ref: '#/components/schemas/SearchPagination' }
+        sort:
+          type: array
+          items: { $ref: '#/components/schemas/SortSpec' }
+    DiscoveryPlan:
+      type: object
+      required: [mode, steps, executed, note]
+      properties:
+        mode: { type: string, enum: [EXISTING_ONLY, DISCOVER_WHEN_SUPPORTED] }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/DiscoveryPlanStep' }
+        executed: { type: boolean }
+        jobId: { type: string, format: uuid, nullable: true }
+        note: { type: string }
+    SearchParserInfo:
+      type: object
+      required: [kind, provider, modelVersion, confidence]
+      properties:
+        kind: { type: string, enum: [LLM, RULES_FALLBACK], description: "Which parser produced the filters — honest provenance" }
+        provider: { type: string }
+        modelVersion: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    NaturalLanguageSearchResponse:
+      type: object
+      required: [query, locale, parser, structuredQuery, unmatchedTerms, resolution, execution, data, pagination]
+      properties:
+        query: { type: string, description: "Original NL text" }
+        locale: { type: string, enum: [fa, en, mixed] }
+        parser: { $ref: '#/components/schemas/SearchParserInfo' }
+        structuredQuery: { $ref: '#/components/schemas/StructuredSearchQuery' }
+        unmatchedTerms:
+          type: array
+          items: { type: string }
+        resolution: { $ref: '#/components/schemas/SearchResolution' }
+        execution:
+          type: object
+          required: [mode, discoveryPlan]
+          properties:
+            mode: { type: string, enum: [EXISTING_ONLY, DISCOVER_WHEN_SUPPORTED] }
+            discoveryPlan: { $ref: '#/components/schemas/DiscoveryPlan' }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/SearchLead' }
+        pagination: { $ref: '#/components/schemas/SearchPaginationResult' }
     # ---------------- reviews / campaigns / exports / usage / ai ----------------
     ReviewRequest:
       type: object

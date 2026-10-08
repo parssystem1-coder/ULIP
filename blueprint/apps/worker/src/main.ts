@@ -269,7 +269,8 @@ export async function runDiscoveryFlowForJob(
   // Phase 18: connector payloads carry posts/media → first-class lead_contents.
   const contentIngestor = new DbContentIngestor(deps.db);
 
-  const allowFake = payload['allowFake'] === true;
+  // Phase 20 preflight fix: the flow reads the explicit `allowFake` opt-in
+  // from the validated job payload itself — fakes resolve ONLY when present.
 
   const outcome = await runDiscovery(
     {
@@ -294,7 +295,6 @@ export async function runDiscoveryFlowForJob(
     { tenantId: context.tenantId, jobId: context.jobId, requestId: context.correlationId ?? undefined },
   );
 
-  void allowFake;
   return outcome;
 }
 

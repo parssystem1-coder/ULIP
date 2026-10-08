@@ -10,6 +10,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { TransitionError } from '@ulip/orchestration';
+import { SearchInputError } from '@ulip/search';
 import { compareRuns, loadDefaultDataset } from '@ulip/eval';
 import type { AppContext } from './composer.ts';
 import { errorReply, jsonReply, readJsonBody, type RequestContext } from './http.ts';
@@ -177,17 +178,138 @@ export function createTaxonomy(app: AppContext) {
 
 // ------------------------------------------------------------- leads
 
+const NlSearchSchema = z.object({
+  text: z.string().min(1).max(1000),
+  locale: z.enum(['fa', 'en']).optional(),
+  mode: z.enum(['EXISTING_ONLY', 'DISCOVER_WHEN_SUPPORTED']).optional(),
+  allowFake: z.boolean().optional(),
+  page: z.number().int().min(1).max(1_000_000).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  sort: z
+    .array(
+      z.object({
+        field: z.enum(['relevance', 'priority', 'activity', 'audienceQuality', 'createdAt']),
+        direction: z.enum(['ASC', 'DESC']),
+      }),
+    )
+    .optional(),
+});
+
+const SORT_FIELDS = ['relevance', 'priority', 'activity', 'audienceQuality', 'createdAt'] as const;
+
+/**
+ * GET /leads — upgraded (Phase 20): full structured filtering through the SAME
+ * search engine as NL search (taxonomy resolution, brand/city filters, score
+ * thresholds, deterministic ranking with reasons, page-based pagination).
+ */
 export function listLeads(app: AppContext) {
   return async (ctx: AuthenticatedContext): Promise<void> => {
-    const status = ctx.query.get('status') ?? undefined;
-    const limit = Number(ctx.query.get('limit') ?? '50');
-    const offset = Number(ctx.query.get('offset') ?? '0');
-    const rows = await app.leads.list(ctx.principal.tenantId, {
-      status,
-      limit: Number.isFinite(limit) ? limit : 50,
-      offset: Number.isFinite(offset) ? offset : 0,
-    });
-    jsonReply(ctx, 200, { data: rows, pagination: { limit, offset } });
+    const q = ctx.query;
+    const filters: Record<string, unknown> = {};
+    const list = (name: string): string[] | undefined => {
+      const values = q
+        .getAll(name)
+        .flatMap((v) => v.split(','))
+        .map((v) => v.trim())
+        .filter((v) => v !== '');
+      return values.length > 0 ? values : undefined;
+    };
+    const single = (name: string): string | undefined => {
+      const v = q.get(name)?.trim();
+      return v !== undefined && v !== '' ? v : undefined;
+    };
+    const num = (name: string): number | undefined => {
+      const raw = q.get(name);
+      if (raw === null || raw.trim() === '') return undefined;
+      const v = Number(raw);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const businessType = single('businessType');
+    if (businessType !== undefined) filters['businessTypes'] = [businessType];
+    const industry = single('industry');
+    if (industry !== undefined) filters['industries'] = [industry];
+    const specialty = single('specialty');
+    if (specialty !== undefined) filters['specialties'] = [specialty];
+    const subSpecialty = single('subSpecialty');
+    if (subSpecialty !== undefined) filters['subSpecialties'] = [subSpecialty];
+    const brand = list('brand');
+    if (brand !== undefined) filters['brands'] = brand;
+    const city = single('city');
+    if (city !== undefined) filters['city'] = city;
+    const country = single('country');
+    if (country !== undefined) filters['country'] = country;
+    const source = single('source');
+    if (source !== undefined) filters['sourceType'] = source;
+    const status = single('status');
+    if (status !== undefined) filters['status'] = status;
+    for (const key of ['minRelevance', 'minAudienceQuality', 'minActivity', 'minConfidence'] as const) {
+      const v = num(key);
+      if (v !== undefined) filters[key] = v;
+    }
+
+    const sortField = single('sort');
+    const sort =
+      sortField !== undefined && (SORT_FIELDS as readonly string[]).includes(sortField)
+        ? [{ field: sortField as (typeof SORT_FIELDS)[number], direction: single('order') === 'ASC' ? 'ASC' as const : 'DESC' as const }]
+        : undefined;
+
+    const page = Math.max(num('page') ?? 1, 1);
+    const limitRaw = num('limit') ?? 50;
+    const limit = Math.min(Math.max(Math.trunc(Number.isFinite(limitRaw) ? limitRaw : 50), 1), 200);
+
+    try {
+      const out = await app.search.executeStructuredFromFilters(
+        ctx.principal.tenantId,
+        filters,
+        { page, limit },
+        sort,
+      );
+      jsonReply(ctx, 200, {
+        data: out.data,
+        pagination: out.pagination,
+        ...(single('debug') === '1' ? { resolution: out.resolution, structuredQuery: out.structuredQuery } : {}),
+      });
+    } catch (err) {
+      if (err instanceof SearchInputError) {
+        return errorReply(ctx, 400, 'VALIDATION_FAILED', err.message);
+      }
+      throw err;
+    }
+  };
+}
+
+/**
+ * POST /leads/search/natural-language — Persian-first NL search (Phase 20).
+ * The parser is honest (LLM when the AI runtime is READY, deterministic rules
+ * otherwise), the LLM output is sanitized into typed filters, execution is
+ * parameterized SQL, ranking is deterministic with reasons, and discovery
+ * planning is capability-aware. NEVER fabrication: unsupported discovery is
+ * reported, not attempted.
+ */
+export function naturalLanguageSearch(app: AppContext) {
+  return async (ctx: AuthenticatedContext): Promise<void> => {
+    const parsed = NlSearchSchema.safeParse(ctx.body);
+    if (!parsed.success) return validationError(ctx, parsed.error);
+    try {
+      const { response } = await app.search.executeNaturalLanguage(ctx.principal.tenantId, {
+        text: parsed.data.text,
+        locale: parsed.data.locale,
+        mode: parsed.data.mode,
+        allowFake: parsed.data.allowFake,
+        pagination:
+          parsed.data.page !== undefined || parsed.data.limit !== undefined
+            ? { page: parsed.data.page ?? 1, limit: parsed.data.limit ?? 50 }
+            : undefined,
+        sort: parsed.data.sort,
+        correlationId: ctx.requestId,
+      });
+      jsonReply(ctx, 200, response);
+    } catch (err) {
+      if (err instanceof SearchInputError) {
+        return errorReply(ctx, 400, 'VALIDATION_FAILED', err.message);
+      }
+      throw err;
+    }
   };
 }
 
@@ -303,19 +425,33 @@ export function createDiscovery(app: AppContext) {
       .update(JSON.stringify(parsed.data))
       .digest('hex');
 
-    // Replay path: same tenant+scope+key returns the original job.
-    const existing = await app.db.query<{ response_snapshot: { jobId?: string } | null; status: string }>(
-      `SELECT response_snapshot, status FROM idempotency_keys
+    // Replay path: same tenant+scope+key returns the original job — but ONLY
+    // for an identical request body (Phase 20 preflight fix): a different
+    // payload under the same key is a client error (409), never a silent
+    // replay of unrelated work.
+    const existing = await app.db.query<
+      { response_snapshot: { jobId?: string } | null; status: string; request_hash: string }
+    >(
+      `SELECT response_snapshot, status, request_hash FROM idempotency_keys
        WHERE tenant_id = $1 AND scope = $2 AND idempotency_key = $3`,
       [tenantId, scope, idemKey],
     );
     if ((existing.rowCount ?? 0) > 0 && existing.rows[0] !== undefined) {
-      const snapshotJobId = existing.rows[0].response_snapshot?.['jobId'];
-      if (existing.rows[0].status === 'COMPLETED' && typeof snapshotJobId === 'string') {
+      const hit = existing.rows[0];
+      if (hit.request_hash !== requestHash) {
+        return errorReply(
+          ctx,
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'Idempotency-Key was already used with a different request payload',
+        );
+      }
+      const snapshotJobId = hit.response_snapshot?.['jobId'];
+      if (hit.status === 'COMPLETED' && typeof snapshotJobId === 'string') {
         const job = await app.jobs.findById(tenantId, snapshotJobId);
         if (job !== null) return jsonReply(ctx, 202, { ...job, replayed: true });
       }
-      if (existing.rows[0].status === 'IN_FLIGHT') {
+      if (hit.status === 'IN_FLIGHT') {
         return errorReply(ctx, 409, 'IDEMPOTENCY_IN_FLIGHT', 'an identical discovery request is still in flight');
       }
       // FAILED: fall through and allow a fresh submission with the same key.
@@ -628,12 +764,24 @@ export function reprocessLead(app: AppContext) {
     const scope = 'lead.reprocess';
     const requestHash = createHash('sha256').update(JSON.stringify({ leadId, ...parsed.data })).digest('hex');
     if (idemKey !== '') {
-      const existing = await app.db.query<{ status: string; response_snapshot: { jobId?: string } | null }>(
-        `SELECT status, response_snapshot FROM idempotency_keys
+      const existing = await app.db.query<
+        { status: string; response_snapshot: { jobId?: string } | null; request_hash: string }
+      >(
+        `SELECT status, response_snapshot, request_hash FROM idempotency_keys
          WHERE tenant_id = $1 AND scope = $2 AND idempotency_key = $3`,
         [tenantId, scope, idemKey],
       );
       const hit = existing.rows[0];
+      // Phase 20 preflight fix: same key + different payload is a conflict,
+      // never a silent replay of unrelated work.
+      if (hit !== undefined && hit.request_hash !== requestHash) {
+        return errorReply(
+          ctx,
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'Idempotency-Key was already used with a different request payload',
+        );
+      }
       if (hit !== undefined && hit.status === 'COMPLETED' && typeof hit.response_snapshot?.jobId === 'string') {
         const job = await app.jobs.findById(tenantId, hit.response_snapshot.jobId);
         if (job !== null) return jsonReply(ctx, 202, { ...job, replayed: true });

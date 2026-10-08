@@ -147,6 +147,12 @@ export interface DiscoveryJobPayload {
   filters?: Record<string, string> | undefined;
   maxCandidates?: number | undefined;
   cursor?: string | undefined;
+  /**
+   * Explicit opt-in for the deterministic fake provider (Phase 20 preflight
+   * fix): local E2E ONLY. The flow refuses fake connectors unless the job
+   * payload itself carries `allowFake: true` — never selected by default.
+   */
+  allowFake?: boolean | undefined;
 }
 
 export class DiscoveryInputError extends Error {
@@ -238,12 +244,16 @@ export function parseDiscoveryPayload(raw: unknown): DiscoveryJobPayload {
   if (p['cursor'] !== undefined && typeof p['cursor'] !== 'string') {
     throw new DiscoveryInputError('payload.cursor must be a string');
   }
+  if (p['allowFake'] !== undefined && typeof p['allowFake'] !== 'boolean') {
+    throw new DiscoveryInputError('payload.allowFake must be a boolean');
+  }
   return {
     sourceId: p['sourceId'],
     query: p['query'] as string | undefined,
     filters,
     maxCandidates: maxRaw as number | undefined,
     cursor: p['cursor'] as string | undefined,
+    ...(p['allowFake'] !== undefined ? { allowFake: p['allowFake'] as boolean } : {}),
   };
 }
 
