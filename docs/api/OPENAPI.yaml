@@ -2139,7 +2139,12 @@ components:
         contentTerms:
           type: array
           items: { type: string }
-          description: "Unresolved terms that fell back to content-aware free-text matching"
+          description: >-
+            Free-text terms for content-aware matching: literal parser keywords,
+            parsed brands, RESOLVED taxonomy labels and unresolved terms alike
+            (Phase 20.1 — a resolved term is never removed from the content
+            path; matching is taxonomy-OR-content with hard constraints
+            AND-ed for both paths).
     SortSpec:
       type: object
       required: [field, direction]

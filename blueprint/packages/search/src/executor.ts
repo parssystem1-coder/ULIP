@@ -123,6 +123,16 @@ export class DbSearchExecutor implements SearchExecutor {
       setFlag('subSpecialty', `${cond} AS matched_sub_specialty`);
     }
 
+    // -- Phase 20.1 dual match path ------------------------------------------
+    // When BOTH structured taxonomy filters AND content terms exist, the two
+    // paths compose as an OR: a lead matches by taxonomy classification OR by
+    // its content (name/description/lead_contents). A business with a generic
+    // profile but relevant posts still matches; a business matching both
+    // simply earns more rank reasons. Precision is preserved: content terms
+    // are bounded, LIKE-escaped, tenant-scoped, parameterized — never a broad
+    // uncontrolled scan, and unrelated content never satisfies a query that
+    // has no content terms at all.
+
     // -- brand free-text over lead_classifications (BRAND) ------------------
     if (brands.length > 0) {
       const p = pushArray(brands.map(likePattern));
@@ -130,6 +140,11 @@ export class DbSearchExecutor implements SearchExecutor {
       where.push(cond);
       setFlag('brand', `${cond} AS matched_brand`);
     }
+
+    // End of the TAXONOMY match path (Phase 20.1). Everything pushed after
+    // this point (location/source/status/score thresholds) is a HARD
+    // constraint that applies to BOTH match paths.
+    const taxonomyEnd = where.length;
 
     // -- location ------------------------------------------------------------
     const city = filters.city === null ? '' : stripNuls(filters.city).trim().slice(0, MAX_TERM_LENGTH);
@@ -174,18 +189,46 @@ export class DbSearchExecutor implements SearchExecutor {
     }
 
     // -- content-aware free text (name/description/content) ------------------
+    // Phase 20.1: this is an OR-path, never an AND-filter. Structured
+    // taxonomy filters form one match path; the content terms form the OTHER
+    // path so a business with a generic profile but relevant lead_contents
+    // still matches (taxonomy-OR-content). Hard constraints above the OR
+    // (tenant, city, status, scores, source) gate BOTH paths. Bounded:
+    // MAX_CONTENT_TERMS terms, each LIKE-escaped and bound as a parameter.
     let contentPatternsParam: string | null = null;
+    const contentConds: string[] = [];
     if (contentTerms.length > 0) {
       const p = pushArray(contentTerms.map(likePattern));
       contentPatternsParam = p;
-      where.push(
-        `(b.canonical_name ILIKE ANY(${p}) OR b.description ILIKE ANY(${p}) OR EXISTS (SELECT 1 FROM lead_contents c WHERE c.lead_id = l.id AND c.text ILIKE ANY(${p})))`,
-      );
-      setFlag('name', `(b.canonical_name ILIKE ANY(${p}) OR b.description ILIKE ANY(${p})) AS matched_name`);
-      setFlag('content', `EXISTS (SELECT 1 FROM lead_contents c WHERE c.lead_id = l.id AND c.text ILIKE ANY(${p})) AS matched_content`);
+      const nameCond = `(b.canonical_name ILIKE ANY(${p}) OR b.description ILIKE ANY(${p}))`;
+      const contentCond = `EXISTS (SELECT 1 FROM lead_contents c WHERE c.lead_id = l.id AND c.text ILIKE ANY(${p}))`;
+      setFlag('name', `${nameCond} AS matched_name`);
+      setFlag('content', `${contentCond} AS matched_content`);
+      // The content match path itself: name/description OR post/caption text.
+      contentConds.push(`(${nameCond} OR ${contentCond})`);
     }
 
-    const whereSql = where.join('\n    AND ');
+    // Compose the dual match path (Phase 20.1):
+    //   where[0]             = tenant scope (ALWAYS outside the OR)
+    //   where[1..taxonomyEnd) = taxonomy filters (one OR arm)
+    //   where[taxonomyEnd..]  = hard constraints (AND-ed for BOTH paths)
+    //   contentConds          = content OR conditions (the other OR arm)
+    // With both arms present: `tenant AND hard... AND (tax... OR content...)`
+    // so a lead matches by taxonomy classification OR by its content, while
+    // tenant isolation and hard constraints (city, status, scores, source)
+    // gate both paths — precision and isolation are preserved.
+    const taxonomy = where.slice(1, taxonomyEnd);
+    const hard = where.slice(taxonomyEnd);
+    let whereSql: string;
+    if (taxonomy.length > 0 && contentConds.length > 0) {
+      const orExpr = `((${taxonomy.join('\n           AND ')})\n           OR (${contentConds.join('\n           OR ')}))`;
+      whereSql = [where[0] ?? '', ...hard, orExpr].join('\n    AND ');
+    } else {
+      // Single-path query: tenant AND (taxonomy/hard...) AND (content...).
+      // The tenant scope is ALWAYS included so parameter $1 stays bound even
+      // when only content terms exist.
+      whereSql = [...where, ...contentConds].join('\n    AND ');
+    }
     const flagSql = `,\n         ${Object.values(flags).join(',\n         ')}`;
     const limit = Math.min(Math.max(pagination.limit, 1), 200);
     const offset = (Math.max(pagination.page, 1) - 1) * limit;

@@ -33,6 +33,13 @@ export interface ParsedQuery {
   filters: LeadSearchFilters;
   confidence: number; // 0..1
   unmatchedTerms: string[];
+  /**
+   * Literal matched phrases for content-aware matching (deterministic parser
+   * only: the raw keywords that fired, e.g. "قطعات پرینتر"). The LLM parser
+   * has no literal surface, so it emits [] — resolved labels + unresolved
+   * terms still reach the content path via the service.
+   */
+  contentTerms: string[];
   locale: 'fa' | 'en' | 'mixed';
   parserKind: SearchParserKind;
   parserProvider: string;
@@ -98,7 +105,13 @@ export interface ExecutorFilters {
   minAudienceQuality: number | null;
   minActivity: number | null;
   minConfidence: number | null;
-  /** Free-text terms matched against name/description/content (untrusted → bound params). */
+  /**
+   * Content-aware OR-path terms: literal matched keywords, parsed brands,
+   * unresolved terms AND resolved taxonomy labels. These never filter a lead
+   * out on their own — they open a content-based match path alongside the
+   * structured taxonomy filters (a business with a generic profile but
+   * relevant posts still matches). Untrusted → bound parameters only.
+   */
   contentTerms: string[];
 }
 
@@ -237,12 +250,19 @@ export interface PlannerSource {
 
 export interface PlannerDeps {
   listSources(tenantId: string): Promise<PlannerSource[]>;
-  /** Enqueues a discovery job for the chosen source; returns the persistent job id. */
+  /**
+   * Enqueues a discovery job for the chosen source; returns the persistent job id.
+   * `allowFake` MUST be preserved into the persisted job payload when true —
+   * the worker refuses deterministic fake connectors unless the job payload
+   * itself carries `allowFake: true` (Phase 20.1: planner verdict and job
+   * payload must agree on the same value).
+   */
   enqueueDiscovery(input: {
     tenantId: string;
     sourceId: string;
     query?: string | undefined;
     filters?: Record<string, string> | undefined;
+    allowFake?: boolean | undefined;
     correlationId?: string | undefined;
   }): Promise<{ jobId: string }>;
 }

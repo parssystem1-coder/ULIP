@@ -115,7 +115,9 @@ test('service: untrusted LLM output is sanitized (invalid status dropped, thresh
   assert.equal(response.data.length, 1);
   assert.equal(response.data[0]?.searchScore, 50, 'no scores ⇒ neutral 50 baseline + 10 SPECIALTY_MATCH boost');
   assert.ok(response.resolution.terms.length === 1 && response.resolution.terms[0]?.via === 'ALIAS');
-  assert.deepEqual(response.resolution.contentTerms, ['قطعات']);
+  // Phase 20.1: a RESOLVED taxonomy term stays in the content path —
+  // resolved label 'قطعات پرینتر' + unresolved 'قطعات', bounded + deduped.
+  assert.deepEqual(response.resolution.contentTerms, ['قطعات پرینتر', 'قطعات']);
   assert.equal(seen.length, 1);
 });
 
@@ -181,19 +183,22 @@ function source(tenantId: string, id: string, type: string, config: Record<strin
   return { id, tenantId, type, name: `src-${id}`, status: 'ACTIVE', config };
 }
 
-function plannerDeps(sources: { id: string; tenantId: string; type: string; name: string; status: string; config: Record<string, unknown> }[], enqueued: string[] = []): { deps: PlannerDeps; enqueued: string[] } {
+function plannerDeps(sources: { id: string; tenantId: string; type: string; name: string; status: string; config: Record<string, unknown> }[], enqueued: string[] = []): { deps: PlannerDeps; enqueued: string[]; enqueueInputs: { tenantId: string; sourceId: string; allowFake?: boolean | undefined; query?: string | undefined }[] } {
+  const enqueueInputs: { tenantId: string; sourceId: string; allowFake?: boolean | undefined; query?: string | undefined }[] = [];
   return {
     deps: {
       async listSources(tenantId) {
         return sources.filter((s) => s.tenantId === tenantId);
       },
-      async enqueueDiscovery(input: { tenantId: string; sourceId: string; query?: string }) {
+      async enqueueDiscovery(input: { tenantId: string; sourceId: string; allowFake?: boolean | undefined; query?: string | undefined }) {
         void input.tenantId;
         enqueued.push(input.sourceId + (input.query !== undefined ? `:${input.query}` : ''));
+        enqueueInputs.push({ tenantId: input.tenantId, sourceId: input.sourceId, allowFake: input.allowFake, query: input.query });
         return { jobId: 'job-1' };
       },
     },
     enqueued,
+    enqueueInputs,
   };
 }
 
@@ -250,6 +255,22 @@ test('planner: fake source refused without allowFake even in DISCOVER_WHEN_SUPPO
   assert.equal(plan2.steps[0]?.verdict, 'SUPPORTED');
   assert.equal(plan2.executed, true);
   assert.equal(plan2.jobId, 'job-1');
+  // Phase 20.1: the planner's allowFake verdict and the enqueue payload MUST
+  // agree — true only when a fake step was actually chosen for execution.
+  const { deps: deps3, enqueueInputs } = plannerDeps([source('t1', 's1', 'FAKE')]);
+  const planner3 = new CapabilityDiscoveryPlanner(deps3, registryAll());
+  await planner3.plan({ tenantId: 't1', text: 'anything', structuredQuery: { filters: {}, pagination: { page: 1, limit: 50 } }, resolved: taxonomyOf('t1', {}), mode: 'DISCOVER_WHEN_SUPPORTED', allowFake: true });
+  assert.equal(enqueueInputs.length, 1);
+  assert.equal(enqueueInputs[0]?.sourceId, 's1');
+  assert.equal(enqueueInputs[0]?.allowFake, true, 'fake source chosen for execution must carry allowFake: true in the enqueue payload');
+  // Real (non-fake) source: allowFake must NOT ride into the payload.
+  const { deps: deps4, enqueueInputs: enqueueInputs4 } = plannerDeps([source('t1', 's1', 'INSTAGRAM', { provider: 'instagram-graph', accessToken: 'token-token-token', igUserId: '123456789' })]);
+  const registry4 = new ConnectorRegistry();
+  registry4.register(new (await import('@ulip/discovery')).InstagramGraphConnectorFactory());
+  const planner4 = new CapabilityDiscoveryPlanner(deps4, registry4);
+  await planner4.plan({ tenantId: 't1', text: '#printerparts', structuredQuery: { filters: {}, pagination: { page: 1, limit: 50 } }, resolved: taxonomyOf('t1', {}), mode: 'DISCOVER_WHEN_SUPPORTED', allowFake: true });
+  assert.equal(enqueueInputs4.length, 1);
+  assert.equal(enqueueInputs4[0]?.allowFake, undefined, 'real-source enqueue must not carry allowFake');
 });
 
 test('planner: HTTP_API boundary honestly UNSUPPORTED (no capabilities advertised)', async () => {

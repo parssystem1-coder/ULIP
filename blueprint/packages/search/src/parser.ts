@@ -99,25 +99,34 @@ export class DeterministicQueryParser implements QueryParser {
     const words = text.split(/\s+/).filter((w) => w.trim() !== '');
     const filters: LeadSearchFilters = {};
     const unmatchedTerms: string[] = [];
+    // Literal keyword surfaces that actually fired in THIS query — the
+    // deterministic content-aware match path (single source of truth).
+    const contentTerms: string[] = [];
     let matched = 0;
 
     for (const rule of BUSINESS_TYPES) {
-      if (rule.keywords.some((k) => normalized.includes(normalizeForMatching(k)))) {
+      const hit = rule.keywords.find((k) => normalized.includes(normalizeForMatching(k)));
+      if (hit !== undefined) {
         filters.businessTypes = [rule.label];
+        contentTerms.push(hit);
         matched += 1;
         break;
       }
     }
     for (const rule of INDUSTRIES) {
-      if (rule.keywords.some((k) => normalized.includes(normalizeForMatching(k)))) {
+      const hit = rule.keywords.find((k) => normalized.includes(normalizeForMatching(k)));
+      if (hit !== undefined) {
         filters.industries = [rule.label];
+        contentTerms.push(hit);
         matched += 1;
         break;
       }
     }
     for (const rule of SPECIALTIES) {
-      if (rule.keywords.some((k) => normalized.includes(normalizeForMatching(k)))) {
+      const hit = rule.keywords.find((k) => normalized.includes(normalizeForMatching(k)));
+      if (hit !== undefined) {
         filters.specialties = [...(filters.specialties ?? []), rule.label];
+        contentTerms.push(hit);
         matched += 1;
         break;
       }
@@ -125,6 +134,7 @@ export class DeterministicQueryParser implements QueryParser {
     for (const brand of BRANDS) {
       if (normalized.includes(normalizeForMatching(brand))) {
         filters.brands = [...(filters.brands ?? []), brand];
+        contentTerms.push(brand);
         matched += 1;
         break;
       }
@@ -163,6 +173,7 @@ export class DeterministicQueryParser implements QueryParser {
       filters,
       confidence: matched > 0 ? 0.75 : 0.2,
       unmatchedTerms,
+      contentTerms: [...new Set(contentTerms)].slice(0, 10),
       locale,
       parserKind: 'RULES_FALLBACK',
       parserProvider: 'rules:deterministic',

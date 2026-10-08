@@ -142,8 +142,11 @@ Persian-first (fa/en). The response is always honest about provenance:
 - `structuredQuery` is the typed `LeadSearchFilters` surface — the LLM never
   emits SQL or raw filter expressions; its output is sanitized before use.
 - `resolution` shows taxonomy resolution per term (ID/SLUG/NAME/ALIAS) and
-  lists unresolved terms — which ALSO fall back to content-aware free-text
-  matching (`resolution.contentTerms`) against name/description/lead content.
+  lists unresolved terms. ALL terms — resolved labels included — feed
+  content-aware free-text matching (`resolution.contentTerms`) against
+  name/description/lead content: a lead matches via its structured taxonomy
+  classification OR via relevant content (Phase 20.1 dual match path; hard
+  constraints such as city/status/scores apply to both paths).
 - `data[]` is deterministically ranked: `searchScore` 0..100 (policy priority
   → relevance → neutral 50 baseline + fixed per-dimension boosts) with
   `reasons[]` explaining every point (no chain-of-thought).

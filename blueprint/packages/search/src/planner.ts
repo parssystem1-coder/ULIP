@@ -230,6 +230,9 @@ export class CapabilityDiscoveryPlanner implements DiscoveryPlanner {
       sourceId: chosen.sourceId,
       query: chosen.proposedQuery,
       filters: chosen.proposedFilters,
+      // Phase 20.1: the persisted payload must agree with the planner verdict —
+      // only a SUPPORTED fake step (which requires input.allowFake) reaches here.
+      allowFake: chosen.isDeterministicFake ? input.allowFake : undefined,
       correlationId: input.correlationId,
     });
     return {

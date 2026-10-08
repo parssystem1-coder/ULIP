@@ -74,7 +74,10 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
         },
         // DB first (source of truth), then BullMQ transport (ADR-016).
         enqueueDiscovery: async (input) => {
-          const job = await jobsRepoFor(input.tenantId, input.sourceId, input.query, input.filters, input.correlationId);
+          // Phase 20.1: preserve the planner's allowFake verdict into the
+          // persisted payload — the worker refuses fake connectors unless the
+          // job payload itself carries `allowFake: true`.
+          const job = await jobsRepoFor(input.tenantId, input.sourceId, input.query, input.filters, input.allowFake, input.correlationId);
           try {
             await queue.add({ jobId: job.id });
           } catch {
@@ -98,11 +101,19 @@ export async function compose(overrides: Partial<Env> = {}): Promise<AppContext>
     sourceId: string,
     query: string | undefined,
     filters: Record<string, string> | undefined,
+    allowFake: boolean | undefined,
     correlationId: string | undefined,
   ) =>
     jobs.create(tenantId, {
       type: 'DISCOVERY',
-      payload: { sourceId, ...(query !== undefined ? { query } : {}), ...(filters !== undefined ? { filters } : {}) },
+      // Only `true` is ever written: omitted/false keeps the payload clean so
+      // the worker's default-reject safety behavior is untouched.
+      payload: {
+        sourceId,
+        ...(query !== undefined ? { query } : {}),
+        ...(filters !== undefined ? { filters } : {}),
+        ...(allowFake === true ? { allowFake: true } : {}),
+      },
       correlationId,
     });
 

@@ -262,12 +262,16 @@ text → parse (LLM | deterministic rules) → sanitize into LeadSearchFilters
 - **Taxonomy resolution** — `DbTaxonomyResolver` resolves terms via
   taxonomy_nodes (id, slug, name), `taxonomy_node_aliases` (alias_norm) and
   `location_aliases` for cities; tenant-scoped; unresolved terms are reported
-  AND fall back to content-aware free-text matching.
+  AND all terms — resolved labels included — participate in content-aware
+  free-text matching (Phase 20.1).
 - **Execution** — `DbSearchExecutor`: parameterized SQL only (LIKE-escaped,
   NUL-stripped), unconditional tenant scoping, all nine match flags computed
   in SQL, page-based pagination with deterministic tiebreak, score-threshold
-  filters (minRelevance/AudienceQuality/Activity/Confidence), content-aware
-  free-text over name/description/lead_contents with bounded snippets.
+  filters (minRelevance/AudienceQuality/Activity/Confidence), and the Phase
+  20.1 dual match path: structured taxonomy filters OR content-aware
+  free-text over name/description/lead_contents, with hard constraints
+  (tenant/city/status/scores/source) AND-ed for both paths and bounded
+  snippets attached.
 - **Ranking** — deterministic composite 0..100 (policy priority → relevance →
   neutral 50 baseline + fixed per-dimension boosts) with structured
   `reasons[]` per lead (no chain-of-thought).
@@ -277,7 +281,9 @@ text → parse (LLM | deterministic rules) → sanitize into LeadSearchFilters
   semantic/location discovery as unavailable (only hashtag/username discovery
   exists); `mode=DISCOVER_WHEN_SUPPORTED` executes the first SUPPORTED step
   (DB-persisted job first, BullMQ transport second; fake sources require the
-  explicit `allowFake` opt-in).
+  explicit `allowFake` opt-in, which is preserved verbatim into the persisted
+  job payload so the worker executes exactly what the planner decided —
+  Phase 20.1).
 - **API** — `POST /leads/search/natural-language` (parser provenance always
   named) and upgraded `GET /leads` (same engine, full structured filters,
   page-based pagination). OpenAPI schemas added/synced.

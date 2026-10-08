@@ -49,6 +49,36 @@ export class SearchService {
   }
 
   /**
+   * Content-aware OR-path terms (Phase 20.1): a term that RESOLVED to a
+   * taxonomy node must not disappear from the content path — a business with
+   * a generic profile but relevant posts must still be able to match.
+   * Composition (deterministic, bounded, deduped):
+   *   parsed literal keywords/brands (parser.contentTerms)
+   *   + resolved taxonomy LABELS (canonical node names)
+   *   + unresolved terms
+   * These never filter a lead out on their own; they open a content-based
+   * match path alongside the structured taxonomy filters.
+   */
+  private contentTermsFor(resolved: ResolvedTaxonomy, parsed: { contentTerms: string[] }): string[] {
+    const resolvedLabels = resolved.terms
+      .filter((t) => t.nodeId !== null)
+      .map((t) => t.term);
+    const combined = [...parsed.contentTerms, ...resolvedLabels, ...resolved.unresolved];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of combined) {
+      const term = raw.trim();
+      if (term === '' || term.length < 2) continue; // no single-char noise
+      const key = term.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(term);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }
+
+  /**
    * Full NL pipeline with explicit tenant scoping. Taxonomy resolution runs
    * through the configured deps (tenant-scoped) before execution.
    */
@@ -69,7 +99,7 @@ export class SearchService {
 
     const resolved = await this.deps.taxonomy.resolve(tenantId, structuredQuery.filters);
 
-    const execution = await this.executeStructured(tenantId, structuredQuery, resolved, false);
+    const execution = await this.executeStructured(tenantId, structuredQuery, resolved, parsed, false);
 
     const mode: ExecutionMode = input.mode ?? 'EXISTING_ONLY';
     const structuredForPlan = { ...structuredQuery, filters: execution.filtersApplied };
@@ -121,7 +151,7 @@ export class SearchService {
     if (sort !== undefined && sort.length > 0) structuredQuery.sort = sort;
 
     const resolved = await this.deps.taxonomy.resolve(tenantId, structuredQuery.filters);
-    const execution = await this.executeStructured(tenantId, structuredQuery, resolved, true);
+    const execution = await this.executeStructured(tenantId, structuredQuery, resolved, { contentTerms: [] }, true);
     return {
       data: execution.data,
       pagination: execution.pagination,
@@ -145,6 +175,9 @@ export class SearchService {
           filters: this.sanitizeFilters(llmResult.filters),
           confidence: clamp01(llmResult.confidence),
           unmatchedTerms: stringArray(llmResult.unmatchedTerms).slice(0, 10),
+          // The LLM parser has no literal keyword surface; content terms come
+          // from resolved labels + unmatched terms via contentTermsFor().
+          contentTerms: [],
           locale: localeHint,
           parserKind: 'LLM' as const,
           parserProvider: llmResult.meta.provider,
@@ -204,6 +237,7 @@ export class SearchService {
     tenantId: string,
     structuredQuery: StructuredSearchQuery,
     resolved: ResolvedTaxonomy,
+    parsed: { contentTerms: string[] },
     sortedInSql: boolean,
   ): Promise<{
     data: SearchResponse['data'];
@@ -213,10 +247,9 @@ export class SearchService {
   }> {
     const f = structuredQuery.filters;
 
-    // Freed text from unresolved taxonomy terms falls back to content-aware
-    // matching — honesty with utility: the term is reported unresolved AND
-    // used as free text.
-    const freeTextTerms = resolved.unresolved.slice(0, 5);
+    // Content-aware OR path (Phase 20.1): literal parsed keywords + resolved
+    // taxonomy labels + unresolved terms. See contentTermsFor().
+    const freeTextTerms = this.contentTermsFor(resolved, parsed);
 
     const executorFilters = {
       businessTypeNodeIds: resolved.businessTypes,
