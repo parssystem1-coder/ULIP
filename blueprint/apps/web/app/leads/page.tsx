@@ -46,8 +46,10 @@ interface NlResponse {
 interface Lead {
   id: string;
   status: string;
-  business_id: string;
-  first_seen_at: string;
+  /** API contract is camelCase (RankedLead) — business_id/snake_case never existed. */
+  businessId: string;
+  canonicalName?: string | null;
+  createdAt: string;
 }
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -187,8 +189,8 @@ export default function LeadsPage() {
             <tr key={l.id}>
               <td>{l.id.slice(0, 8)}…</td>
               <td>{l.status}</td>
-              <td>{l.business_id.slice(0, 8)}…</td>
-              <td>{new Date(l.first_seen_at).toLocaleString('fa-IR')}</td>
+              <td>{l.canonicalName ?? `${l.businessId.slice(0, 8)}…`}</td>
+              <td>{new Date(l.createdAt).toLocaleString('fa-IR')}</td>
             </tr>
           ))}
         </tbody>

@@ -75,6 +75,27 @@ export async function authenticate(
   return { userId: user.id, tenantId: user.tenant_id, role: user.role, email: user.email };
 }
 
+/**
+ * CORS for the web UI (Phase 14.1 fix): the browser blocks cross-origin
+ * fetches from the web app (http://localhost:$WEB_PORT) to this API unless
+ * the response carries Access-Control headers and OPTIONS preflights succeed.
+ * The allow-list is a single origin derived from the configured WEB_PORT —
+ * never a wildcard — and only affects browsers (Bearer-key auth is unchanged;
+ * server-to-server/curl requests carry no Origin and are untouched).
+ */
+export function applyCors(app: AppContext, req: IncomingMessage, res: ServerResponse): boolean {
+  const origin = req.headers.origin;
+  if (typeof origin !== 'string' || origin === '') return false;
+  const allowed = `http://localhost:${app.env.WEB_PORT}`;
+  if (origin !== allowed) return false;
+  res.setHeader('access-control-allow-origin', origin);
+  res.setHeader('vary', 'Origin');
+  res.setHeader('access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'authorization,content-type,x-request-id,idempotency-key');
+  res.setHeader('access-control-max-age', '600');
+  return true;
+}
+
 /** Wraps a handler with request-id, logging, auth and the error boundary. */
 export function pipeline(
   app: AppContext,
@@ -99,6 +120,14 @@ export function pipeline(
     } as unknown as RequestContext;
 
     res.setHeader('x-request-id', requestId);
+    applyCors(app, req, res);
+
+    // Browser preflight: answer before auth/routing (no key is sent on it).
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
 
     try {
       const matched = router.match(ctxBase.method, ctxBase.path);
