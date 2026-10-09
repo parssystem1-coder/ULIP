@@ -83,6 +83,13 @@ cursors are rejected as `DiscoveryInputError`.
   a typed `rate_limited` error (with `Retry-After` when present) that is
   NEVER auto-retried.
 
+- **Phase 21 (worker persistence)**: a `rate_limited` connector error AND a
+  hashtag-budget refusal (`HASHTAG_BUDGET_EXHAUSTED`) both map to the
+  job code `RATE_LIMITED` with the orchestration RETRY policy (max 3
+  attempts, 60s exponential base). The provider's `Retry-After` (and, for
+  budget exhaustion, the expiry of the 7-day rolling window) is the FLOOR:
+  the job re-arms `run_after` at that instant — never retried earlier.
+
 ## Error mapping (typed, token-free)
 
 | Condition | Kind | Behavior |

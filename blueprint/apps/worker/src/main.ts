@@ -24,12 +24,14 @@ import {
   ConnectorNotAvailableError,
   DbContentIngestor,
   DbEntityResolver,
+  DbHashtagBudgetStore,
   DbRawEntityStore,
   DeterministicFakeConnectorFactory,
   ConfiguredHttpApiConnectorFactory,
   InstagramGraphConnectorFactory,
   ConnectorRegistry,
   DiscoveryInputError,
+  InstagramConnectorError,
   PersianAwareNormalizer,
   runDiscovery,
 } from '@ulip/discovery';
@@ -183,14 +185,15 @@ async function handleJobFailure(
     return;
   }
 
+  // Phase 21: rate-limit paths are TYPED end-to-end (resolveDiscoveryErrorCode —
+  // 429 ± Retry-After, hashtag-budget refusal) using the shared failure table.
   const isAnalysis = err instanceof AnalysisRunError;
+  const mapping = resolveDiscoveryErrorCode(err);
+  const retryAfterSeconds = mapping.retryAfterSeconds;
+  const isRateLimited = mapping.code === 'RATE_LIMITED';
   const code: ErrorCode | string = isAnalysis
     ? (err as AnalysisRunError).code
-    : err instanceof DiscoveryInputError
-      ? 'BAD_REQUEST'
-      : err instanceof ConnectorNotAvailableError
-        ? 'NOT_CONFIGURED'
-        : 'WORKER_ERROR';
+    : mapping.code;
 
   // Bounded retry: only when the failure policy says RETRY and attempts remain.
   if (isAnalysis) {
@@ -231,6 +234,41 @@ async function handleJobFailure(
     }
   }
 
+  // Phase 21: RATE_LIMITED obeys the orchestration policy (RETRY, backoff 60s
+  // base) — the provider's Retry-After / the 7-day window (already folded
+  // into mapping.retryAfterSeconds) is the FLOOR: never retried earlier.
+  if (isRateLimited && !isAnalysis) {
+    const policyEntry = FAILURE_POLICY['RATE_LIMITED'];
+    const allowed = Math.min(policyEntry.maxAttempts ?? row.max_attempts, row.max_attempts);
+    if (row.attempt_count < allowed) {
+      const policyBackoff = (policyEntry.backoffBaseSeconds ?? 60) * row.attempt_count;
+      const backoffSeconds = Math.max(retryAfterSeconds ?? 0, policyBackoff);
+      const runAfter = new Date(Date.now() + backoffSeconds * 1000).toISOString();
+      const rearmed = await db.query(
+        `UPDATE jobs SET status = 'PENDING', run_after = $2::timestamptz, error_code = $3, error_message = $4, updated_at = now()
+         WHERE id = $1 AND status = 'RUNNING' RETURNING id`,
+        [jobId, runAfter, code, message],
+      );
+      if ((rearmed.rowCount ?? 0) > 0) {
+        await db.query(
+          `INSERT INTO job_attempts (job_id, attempt_no, started_at, finished_at, outcome, error_code, error_message)
+           VALUES ($1, $2, now() - interval '1 second', now(), 'RETRYABLE_FAILURE', $3, $4)
+           ON CONFLICT (job_id, attempt_no) DO NOTHING`,
+          [jobId, row.attempt_count, code, `${message} (retry_after=${backoffSeconds}s)`],
+        );
+        await db.query(`INSERT INTO job_events (job_id, event_type, payload) VALUES ($1, 'RETRY_SCHEDULED', $2::jsonb)`, [
+          jobId,
+          JSON.stringify({ attempt: row.attempt_count, allowed, backoffSeconds, runAfter, code, ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}) }),
+        ]);
+        await enqueuePersistentJob(deps.env.REDIS_URL, jobId, 0, backoffSeconds * 1000).catch((e: unknown) =>
+          jobLog.warn('retry re-enqueue failed (row stays PENDING)', { error: e instanceof Error ? e.message : String(e) }),
+        );
+        jobLog.warn('rate-limited job scheduled for retry', { attempt: row.attempt_count, allowed, backoffSeconds, retryAfterSeconds: retryAfterSeconds ?? null });
+        return;
+      }
+    }
+  }
+
   await db.query(
     `UPDATE jobs SET status = 'FAILED', error_code = $2, error_message = $3, failed_at = now() WHERE id = $1`,
     [jobId, code, message],
@@ -268,6 +306,8 @@ export async function runDiscoveryFlowForJob(
   const normalizer = new PersianAwareNormalizer();
   // Phase 18: connector payloads carry posts/media → first-class lead_contents.
   const contentIngestor = new DbContentIngestor(deps.db);
+  // Phase 21: persistent rolling-7d hashtag budget (DB is the arbiter).
+  const hashtagBudget = new DbHashtagBudgetStore(deps.db);
 
   // Phase 20 preflight fix: the flow reads the explicit `allowFake` opt-in
   // from the validated job payload itself — fakes resolve ONLY when present.
@@ -280,6 +320,7 @@ export async function runDiscoveryFlowForJob(
       normalizer,
       resolver,
       contentIngestor,
+      hashtagBudget,
       sources: {
         async findById(tenantId, sourceId) {
           const r = await deps.db.query<{ id: string; tenant_id: string; type: string; name: string; status: string; config: Record<string, unknown> }>(
@@ -375,6 +416,37 @@ export async function startWorker(overrides: Partial<ReturnType<typeof loadEnv>>
   };
   log.info('worker started', { queue: 'ulip-jobs' });
   return { worker, close };
+}
+
+/**
+ * Phase 21 (pure, testable): maps a discovery-flow failure to its persistent
+ * job outcome — typed error code + the retry decision backing it. The worker
+ * persists exactly what this returns; nothing here touches the network.
+ */
+export interface DiscoveryFailureMapping {
+  code: ErrorCode | string;
+  /** true when the orchestration RETRY policy applies to this code. */
+  retryable: boolean;
+  /** Provider Retry-After floor in seconds (hashtag budget → 7d window). */
+  retryAfterSeconds?: number | undefined;
+}
+
+export function resolveDiscoveryErrorCode(err: unknown): DiscoveryFailureMapping {
+  const message = err instanceof Error ? err.message : String(err);
+  const isRateLimitedError =
+    (err instanceof InstagramConnectorError && err.kind === 'rate_limited') ||
+    /HASHTAG_BUDGET_EXHAUSTED/.test(message);
+  if (isRateLimitedError) {
+    const retryAfterSeconds = err instanceof InstagramConnectorError ? (err.retryAfterSeconds ?? undefined) : undefined;
+    return {
+      code: 'RATE_LIMITED',
+      retryable: true,
+      retryAfterSeconds: /HASHTAG_BUDGET_EXHAUSTED/.test(message) ? (7 * 24 * 3600) : retryAfterSeconds,
+    };
+  }
+  if (err instanceof DiscoveryInputError) return { code: 'BAD_REQUEST', retryable: false };
+  if (err instanceof ConnectorNotAvailableError) return { code: 'NOT_CONFIGURED', retryable: false };
+  return { code: 'WORKER_ERROR', retryable: false };
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split(/[\\/]/).pop() ?? '#');

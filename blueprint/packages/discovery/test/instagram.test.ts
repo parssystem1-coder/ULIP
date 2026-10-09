@@ -572,7 +572,8 @@ test('pure helpers: hashtag/username normalization + username extraction', () =>
 
 test('discovery flow E2E with the real INSTAGRAM connector: raw → lead → lead_contents', async () => {
   const { runDiscovery, PersianAwareNormalizer, DbContentIngestor } = await import('../src/index.ts');
-  const { FakeRawEntityStore, FakeResolver, FakeSources, makeSource } = await import('./fakes.ts');
+  const { FakeHashtagBudgetStore, FakeRawEntityStore, FakeResolver, FakeSources, makeSource } = await import('./fakes.ts');
+  const budgetStore = new FakeHashtagBudgetStore();
 
   const { handler } = standardFakeGraph();
   const registry = new ConnectorRegistry();
@@ -599,6 +600,7 @@ test('discovery flow E2E with the real INSTAGRAM connector: raw → lead → lea
       resolver,
       connectorRegistry: registry,
       contentIngestor: contentIngestor as unknown as InstanceType<typeof DbContentIngestor>,
+      hashtagBudget: budgetStore,
     },
     { sourceId: 'src-ig', query: '#printerparts', maxCandidates: 10 },
     { tenantId: 't1', jobId: 'job-1' },
@@ -608,6 +610,9 @@ test('discovery flow E2E with the real INSTAGRAM connector: raw → lead → lea
   assert.equal(outcome.created, 2);
   assert.equal(outcome.rawPersisted, 2);
   assert.ok(outcome.contentsIngested >= 4);
+  // Phase 21: the hashtag query spent the rolling-7d quota (ledger-driven).
+  assert.equal(outcome.hashtag, 'printerparts');
+  assert.equal(outcome.budgetReused, false);
 
   // Repeat run: identical payloads → unchanged snapshots, idempotent leads.
   const second = await runDiscovery(
@@ -619,12 +624,15 @@ test('discovery flow E2E with the real INSTAGRAM connector: raw → lead → lea
       resolver,
       connectorRegistry: registry,
       contentIngestor: contentIngestor as unknown as InstanceType<typeof DbContentIngestor>,
+      hashtagBudget: budgetStore,
     },
     { sourceId: 'src-ig', query: '#printerparts', maxCandidates: 10 },
     { tenantId: 't1', jobId: 'job-2' },
   );
   assert.equal(second.rawPersisted, 0);
   assert.equal(second.created, 0);
+  // Phase 21: the SAME tag within the window is reused for free.
+  assert.equal(second.budgetReused, true);
 
   // Tenant isolation still holds for INSTAGRAM sources.
   await assert.rejects(

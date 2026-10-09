@@ -20,6 +20,11 @@
  */
 
 import type { LeadSearchFilters, SearchPagination, SortSpec, StructuredSearchQuery } from '@ulip/domain/contracts';
+import type {
+  ClassifiedConstraint,
+  HashtagCandidate,
+  HashtagBudgetSnapshot,
+} from '@ulip/discovery';
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -213,6 +218,13 @@ export type ExecutionMode = 'EXISTING_ONLY' | 'DISCOVER_WHEN_SUPPORTED';
 
 export type DiscoveryVerdict = 'SUPPORTED' | 'PARTIAL' | 'UNSUPPORTED';
 
+/** Plan-visible candidate (the discovery package's deterministic shape). */
+export type HashtagCandidateInfo = HashtagCandidate;
+/** Plan-visible classified constraint (POST_FETCH_FILTER / AI_ANALYSIS / ...). */
+export type ClassifiedConstraintInfo = ClassifiedConstraint;
+/** Plan-visible rolling-window budget snapshot. */
+export type HashtagBudgetInfo = HashtagBudgetSnapshot;
+
 export interface DiscoveryPlanStep {
   sourceId: string;
   sourceType: string;
@@ -226,6 +238,22 @@ export interface DiscoveryPlanStep {
   /** Derived discovery query when the source can serve one (hashtag/username/text). */
   proposedQuery?: string | undefined;
   proposedFilters?: Record<string, string> | undefined;
+  /**
+   * Phase 21: when the step proposes TAXONOMY-derived hashtag candidates
+   * (PARTIAL hashtag suggestion), this carries the deterministic candidate
+   * list with per-candidate provenance and rank (no LLM, replayable).
+   */
+  hashtagCandidates?: HashtagCandidateInfo[] | undefined;
+  /**
+   * Phase 21: where each user constraint will be enforced and how exact it
+   * is — visible in the plan, never silently dropped (honesty map).
+   */
+  classifiedConstraints?: ClassifiedConstraintInfo[] | undefined;
+  /**
+   * Phase 21: official rolling-7d hashtag budget snapshot for this source
+   * (30 unique tags / 7d per professional account, Meta quota).
+   */
+  hashtagBudget?: HashtagBudgetInfo | undefined;
 }
 
 export interface DiscoveryPlan {
@@ -250,6 +278,11 @@ export interface PlannerSource {
 
 export interface PlannerDeps {
   listSources(tenantId: string): Promise<PlannerSource[]>;
+  /**
+   * Phase 21: alias surfaces (alias_norm values) for resolved taxonomy node
+   * ids — deterministic hashtag candidates come from these, never from the LLM.
+   */
+  taxonomyAliases?(nodeIds: string[]): Promise<{ nodeId: string; name: string; slug: string; aliases: string[] }[]>;
   /**
    * Enqueues a discovery job for the chosen source; returns the persistent job id.
    * `allowFake` MUST be preserved into the persisted job payload when true —

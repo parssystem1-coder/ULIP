@@ -156,6 +156,14 @@ Persian-first (fa/en). The response is always honest about provenance:
   broad semantic/location queries are PARTIAL/UNSUPPORTED. With
   `mode=DISCOVER_WHEN_SUPPORTED` the first SUPPORTED step is executed (fake
   sources additionally require `allowFake: true`).
+- Phase 21 — a hashtag-capable PARTIAL step additionally carries:
+  `hashtagCandidates[]` (deterministic, taxonomy-derived candidates with
+  `via` provenance and `rank` — never LLM-fabricated, replayable),
+  `classifiedConstraints[]` (each user constraint labeled with WHERE it is
+  enforced — `POST_FETCH_FILTER` exact / `POST_FETCH_HEURISTIC` /
+  `AI_ANALYSIS` evidence-based / `UNPROVABLE` — and never silently dropped),
+  and `hashtagBudget` (official rolling-7d quota snapshot: 30 unique tags
+  per professional account per Meta's Hashtag Search cap).
 
 `GET /api/v1/leads` uses the SAME engine for structured filtering:
 `businessType`, `industry`, `specialty`, `subSpecialty`, `brand`, `city`,

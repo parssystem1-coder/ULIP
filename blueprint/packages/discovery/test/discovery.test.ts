@@ -8,7 +8,7 @@ import {
   PersianAwareNormalizer,
   DeterministicFakeConnectorFactory,
 } from '../src/index.ts';
-import { FakeRawEntityStore, FakeResolver, FakeSources, flowSource, makeSource, runTestDiscovery } from './fakes.ts';
+import { FakeHashtagBudgetStore, FakeRawEntityStore, FakeResolver, FakeSources, flowSource, makeSource, runTestDiscovery } from './fakes.ts';
 
 const T1 = '11111111-1111-1111-1111-111111111111';
 const T2 = '22222222-2222-2222-2222-222222222222';
@@ -114,13 +114,16 @@ test('discovery flow E2E (fake provider): raw → normalize → resolve → lead
   const store = new FakeRawEntityStore();
   const resolver = new FakeResolver();
   const sources = new FakeSources([flowSource(SRC1, T1)]);
+  const budget = new FakeHashtagBudgetStore(); // hashtag-style query spends the official quota
 
-  const first = await runTestDiscovery({ sources, rawEntities: store, resolver }, { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 10 }, { tenantId: T1 });
+  const first = await runTestDiscovery({ sources, rawEntities: store, resolver, hashtagBudget: budget }, { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 10 }, { tenantId: T1 });
   assert.ok(first.discovered >= 1);
   assert.equal(first.created, first.discovered);
   assert.equal(first.rawPersisted, first.discovered);
 
-  const second = await runTestDiscovery({ sources, rawEntities: store, resolver }, { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 10 }, { tenantId: T1 });
+  const second = await runTestDiscovery({ sources, rawEntities: store, resolver, hashtagBudget: budget }, { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 10 }, { tenantId: T1 });
+  assert.equal(second.budgetReused, true, 'in-window reuse of the same tag must be free and honest');
+  assert.equal(second.hashtag, 'چاپخانه');
   assert.equal(second.discovered, first.discovered);
   // Raw snapshots unchanged (same hash) and no NEW leads: dedup by identity key.
   assert.equal(second.rawPersisted, 0);
@@ -128,6 +131,85 @@ test('discovery flow E2E (fake provider): raw → normalize → resolve → lead
   assert.equal(second.updated, second.discovered);
   assert.equal(resolver.leads.length, first.discovered);
   assert.equal(store.rows.length, first.discovered);
+});
+
+// ------------------------------------------------- Phase 21 flow tests
+
+test('discovery flow: POST_FETCH_FILTER followers constraint drops items below threshold honestly', async () => {
+  const store = new FakeRawEntityStore();
+  const resolver = new FakeResolver();
+  const sources = new FakeSources([flowSource(SRC1, T1)]);
+  const budget = new FakeHashtagBudgetStore();
+
+  // The deterministic fake emits profiles; the constraint چاپخانه carries no followers → only the numeric threshold applies.
+  const outcome = await runTestDiscovery(
+    { sources, rawEntities: store, resolver, hashtagBudget: budget },
+    { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 10, filters: { constraints: 'بیش از ۱۰۶ فالوئر' } },
+    { tenantId: T1 },
+  );
+  // Threshold 106: fake profiles with fewer followers are dropped (reported, never silently merged).
+  assert.ok(outcome.discovered >= 1);
+  assert.equal(outcome.filteredOut !== undefined, true, 'filteredOut must be reported when a POST_FETCH filter is active');
+  assert.ok(outcome.created + (outcome.filteredOut ?? 0) <= outcome.discovered);
+});
+
+test('discovery flow: budget exhaustion is an honest refusal', async () => {
+  const store = new FakeRawEntityStore();
+  const resolver = new FakeResolver();
+  const sources = new FakeSources([flowSource(SRC1, T1)]);
+  const budget = new FakeHashtagBudgetStore(0); // cap of 0 → any spend refused
+
+  await assert.rejects(
+    () =>
+      runTestDiscovery(
+        { sources, rawEntities: store, resolver, hashtagBudget: budget },
+        { sourceId: SRC1, query: '#چاپخانه', maxCandidates: 5 },
+        { tenantId: T1 },
+      ),
+    (err: Error) => err.name === 'ConnectorNotAvailableError' && /HASHTAG_BUDGET_EXHAUSTED/.test(err.message),
+  );
+  assert.equal(store.rows.length, 0, 'a refused spend must not persist anything');
+});
+
+test('discovery flow: hashtag-style query without a budget store is an honest failure, never untracked spend', async () => {
+  const store = new FakeRawEntityStore();
+  const resolver = new FakeResolver();
+  const sources = new FakeSources([flowSource(SRC1, T1)]);
+
+  await assert.rejects(
+    () =>
+      runTestDiscovery(
+        { sources, rawEntities: store, resolver },
+        { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 5 },
+        { tenantId: T1 },
+      ),
+    (err: Error) => err.name === 'DiscoveryInputError' && /hashtag budget store/.test(err.message),
+  );
+  assert.equal(store.rows.length, 0);
+});
+
+test('discovery flow: usernames / free-text queries bypass the hashtag budget gate', async () => {
+  const store = new FakeRawEntityStore();
+  const resolver = new FakeResolver();
+  const sources = new FakeSources([flowSource(SRC1, T1)]);
+
+  // A free-text phrase that matches the fake dataset — NOT a single normalized
+  // tag — must reach the connector without any hashtag budget spend.
+  const textOutcome = await runTestDiscovery(
+    { sources, rawEntities: store, resolver },
+    { sourceId: SRC1, query: 'چاپخانه تهران', maxCandidates: 5 },
+    { tenantId: T1 },
+  );
+  assert.ok(textOutcome.discovered >= 1, 'free-text queries do not consume hashtag quota');
+  assert.equal(textOutcome.hashtag, undefined, 'no hashtag bookkeeping attached to a free-text query');
+
+  // usernames mode (discoveryMode filter) also bypasses the budget gate.
+  const unOutcome = await runTestDiscovery(
+    { sources, rawEntities: store, resolver },
+    { sourceId: SRC1, query: 'چاپخانه', maxCandidates: 5, filters: { discoveryMode: 'usernames' } },
+    { tenantId: T1 },
+  );
+  assert.equal(unOutcome.hashtag, undefined, 'usernames-mode jobs never consume the hashtag quota');
 });
 
 test('discovery flow: connector failure is surfaced, no partial lead rows', async () => {

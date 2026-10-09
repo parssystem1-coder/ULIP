@@ -2168,6 +2168,35 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
+        hashtagCandidates:
+          type: array
+          description: "Phase 21 — deterministic taxonomy-derived hashtag candidates (no LLM, replayable); present only on hashtag-capable PARTIAL steps"
+          items:
+            type: object
+            required: [hashtag, via, rank]
+            properties:
+              hashtag: { type: string, description: "normalized tag (ZWNJ/kashida → underscore, ledger identity)" }
+              via: { type: string, description: "provenance surface: slug | name | alias:<norm> | term:<via>" }
+              rank: { type: integer, minimum: 1, description: "deterministic rank (source order, then lexicographic)" }
+        classifiedConstraints:
+          type: array
+          description: "Phase 21 — where each user constraint is enforced and how exact it is; never silently dropped"
+          items:
+            type: object
+            required: [raw, kind, exactness, note]
+            properties:
+              raw: { type: string }
+              kind: { type: string, enum: [API_DIRECT, POST_FETCH_FILTER, POST_FETCH_HEURISTIC, AI_ANALYSIS, UNPROVABLE] }
+              exactness: { type: string, enum: [exact, heuristic, evidence-based, unprovable] }
+              note: { type: string }
+        hashtagBudget:
+          type: object
+          description: "Phase 21 — official rolling-7d hashtag budget snapshot (Meta: 30 unique tags / 7d per professional account)"
+          required: [used, budget, remaining]
+          properties:
+            used: { type: integer, minimum: 0 }
+            budget: { type: integer, minimum: 0 }
+            remaining: { type: integer, minimum: 0 }
     LeadSearchFilters:
       type: object
       description: "Typed filter surface — the ONLY shape a search may execute (LLM output is sanitized into this)"

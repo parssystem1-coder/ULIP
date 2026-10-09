@@ -13,6 +13,7 @@ import type {
   SourceLookup,
   SourceRecord,
 } from '../src/contracts.ts';
+import type { HashtagBudgetStore, HashtagSpendResult } from '../src/hashtag-budget.ts';
 import { DeterministicFakeConnectorFactory, runDiscovery } from '../src/index.ts';
 
 export class FakeRawEntityStore implements RawEntityStore {
@@ -106,6 +107,64 @@ export function makeSource(id: string, tenantId: string, type = 'FAKE', config: 
   return { id, tenantId, type, name: `src-${id}`, status: 'ACTIVE', config };
 }
 
+/**
+ * In-memory rolling-window hashtag budget (test double for DbHashtagBudgetStore
+ * with identical semantics: 30 unique tags / 7d, in-window reuse is free).
+ */
+export class FakeHashtagBudgetStore implements HashtagBudgetStore {
+  readonly ledger = new Map<string, number>(); // key `${tenant}:${source}:${tag}` → last-queried-at ms
+  private readonly budget: number;
+
+  constructor(budget = 30) {
+    this.budget = budget;
+  }
+
+  async spend(input: {
+    tenantId: string;
+    sourceId: string;
+    hashtag: string;
+    jobId?: string | undefined;
+    budget?: number | undefined;
+  }): Promise<HashtagSpendResult> {
+    const budget = input.budget ?? this.budget;
+    const raw = input.hashtag
+      .replace(/[\u200c\u0640\s]+/g, '_')
+      .replace(/^#+/, '')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .toLowerCase();
+    if (raw === '') return { admitted: false, reused: false, usedInWindow: 0, budget, reason: 'HASHTAG_BUDGET_EXHAUSTED' };
+    const key = `${input.tenantId}:${input.sourceId}:${raw}`;
+    if (this.ledger.has(key)) {
+      const used = this.usedInWindow(input.tenantId, input.sourceId);
+      return { admitted: true, reused: true, usedInWindow: used, budget };
+    }
+    const used = new Set<string>();
+    for (const k of this.ledger.keys()) {
+      const [t, s, tag] = k.split(':');
+      if (t === input.tenantId && s === input.sourceId) used.add(tag ?? '');
+    }
+    if (used.size >= budget) return { admitted: false, reused: false, usedInWindow: used.size, budget, reason: 'HASHTAG_BUDGET_EXHAUSTED' };
+    this.ledger.set(key, Date.now());
+    return { admitted: true, reused: false, usedInWindow: used.size + 1, budget };
+  }
+
+  async usage(tenantId: string, sourceId: string, budget?: number | undefined): Promise<{ used: number; budget: number; remaining: number }> {
+    const used = this.usedInWindow(tenantId, sourceId);
+    const b = budget ?? this.budget;
+    return { used, budget: b, remaining: Math.max(0, b - used) };
+  }
+
+  private usedInWindow(tenantId: string, sourceId: string): number {
+    const used = new Set<string>();
+    for (const k of this.ledger.keys()) {
+      const [t, s, tag] = k.split(':');
+      if (t === tenantId && s === sourceId) used.add(tag ?? '');
+    }
+    return used.size;
+  }
+}
+
 export function flowSource(id: string, tenantId: string): SourceRecord {
   return makeSource(id, tenantId, 'FAKE');
 }
@@ -117,6 +176,8 @@ export async function runTestDiscovery(
     resolver: EntityResolver;
     /** Phase 18 content ingestion (optional; skips when absent). */
     contentIngestor?: import('../src/content.ts').ContentIngestor | undefined;
+    /** Phase 21 rolling-7d hashtag budget (optional honest gate). */
+    hashtagBudget?: HashtagBudgetStore | undefined;
     log?: { info(msg: string, fields?: Record<string, unknown>): void; error(msg: string, fields?: Record<string, unknown>): void };
   },
   payload: DiscoveryJobPayload | Record<string, unknown>,
@@ -137,6 +198,7 @@ export async function runTestDiscovery(
       resolver: deps.resolver,
       connectorRegistry: registry,
       ...(deps.contentIngestor !== undefined ? { contentIngestor: deps.contentIngestor } : {}),
+      ...(deps.hashtagBudget !== undefined ? { hashtagBudget: deps.hashtagBudget } : {}),
     },
     withFakeOptIn,
     context,

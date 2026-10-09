@@ -307,3 +307,69 @@ test('planner: NOT_CONFIGURED instagram (missing token) is UNSUPPORTED with hone
   assert.equal(plan.steps[0]?.connectorResolution, 'NOT_CONFIGURED');
   assert.equal(plan.steps[0]?.verdict, 'UNSUPPORTED');
 });
+
+// ------------------------------------------------- Phase 21 planner enrichment
+
+test('planner: PARTIAL instagram step carries deterministic hashtag candidates + classified constraints', async () => {
+  const registry = new ConnectorRegistry();
+  registry.register(new (await import('@ulip/discovery')).InstagramGraphConnectorFactory());
+  const { deps } = plannerDeps([source('t1', 's1', 'INSTAGRAM', { provider: 'instagram-graph', accessToken: 'token-token-token', igUserId: '123456789' })]);
+  const planner = new CapabilityDiscoveryPlanner(deps, registry);
+  const resolved = taxonomyOf('t1', {});
+  resolved.terms.push({ field: 'specialties', term: 'printer parts', nodeId: '11111111-1111-1111-1111-111111111111', via: 'ALIAS' });
+  resolved.unresolved.push('بیش از ۵۰۰۰ فالوئر', 'فعال در تهران', 'تهران');
+  const plan = await planner.plan({
+    tenantId: 't1',
+    text: 'عمده فروشان قطعات پرینتر در تهران',
+    structuredQuery: { filters: {}, pagination: { page: 1, limit: 50 } },
+    resolved,
+    mode: 'EXISTING_ONLY',
+    allowFake: false,
+  });
+  const step = plan.steps[0]!;
+  assert.equal(step.verdict, 'PARTIAL');
+  // Deterministic candidates: no alias table wired → term text surface.
+  assert.ok(step.hashtagCandidates !== undefined, 'PARTIAL step must carry hashtagCandidates when taxonomy resolved a term');
+  assert.ok((step.hashtagCandidates?.length ?? 0) >= 1);
+  for (const c of step.hashtagCandidates ?? []) {
+    assert.ok(c.hashtag.length >= 2);
+    assert.ok(c.via.startsWith('term:slug') || c.via.startsWith('term:name') || c.via.startsWith('term:alias') || c.via.startsWith('term:'), `via must carry provenance, got ${c.via}`);
+  }
+  // Constraints classified honestly (Persian digits normalized: ۵۰۰۰ → 5000).
+  const follower = step.classifiedConstraints?.find((c) => c.kind === 'POST_FETCH_FILTER');
+  assert.ok(follower !== undefined, 'follower threshold must classify as POST_FETCH_FILTER');
+  assert.match(follower?.note ?? '', />= 5000/);
+  const activity = step.classifiedConstraints?.find((c) => c.kind === 'POST_FETCH_HEURISTIC');
+  assert.ok(activity !== undefined, 'activity constraint must classify as POST_FETCH_HEURISTIC');
+  const city = step.classifiedConstraints?.find((c) => c.kind === 'AI_ANALYSIS');
+  assert.ok(city !== undefined, 'city constraint must classify as AI_ANALYSIS (evidence-based)');
+});
+
+test('planner: taxonomyAliases dependency supplies real alias surfaces (rank dedupes, provenance alias:<norm>)', async () => {
+  const registry = new ConnectorRegistry();
+  registry.register(new (await import('@ulip/discovery')).InstagramGraphConnectorFactory());
+  const base = plannerDeps([source('t1', 's1', 'INSTAGRAM', { provider: 'instagram-graph', accessToken: 'token-token-token', igUserId: '123456789' })]);
+  const deps: PlannerDeps = {
+    ...base.deps,
+    async taxonomyAliases(nodeIds) {
+      assert.deepEqual(nodeIds, ['11111111-1111-1111-1111-111111111111']);
+      return [{ nodeId: nodeIds[0]!, name: 'قطعات پرینتر', slug: 'printer-parts', aliases: ['لوازم پرینتر', 'printer parts'] }];
+    },
+  };
+  const planner = new CapabilityDiscoveryPlanner(deps, registry);
+  const resolved = taxonomyOf('t1', {});
+  resolved.terms.push({ field: 'specialties', term: 'قطعات پرینتر', nodeId: '11111111-1111-1111-1111-111111111111', via: 'NAME' });
+  const plan = await planner.plan({
+    tenantId: 't1',
+    text: 'قطعات پرینتر',
+    structuredQuery: { filters: {}, pagination: { page: 1, limit: 50 } },
+    resolved,
+    mode: 'EXISTING_ONLY',
+    allowFake: false,
+  });
+  const step = plan.steps[0]!;
+  assert.equal(step.verdict, 'PARTIAL');
+  const cands = step.hashtagCandidates ?? [];
+  assert.ok(cands.some((c) => c.hashtag === 'printer_parts' || c.hashtag === 'printerparts'), `slug-derived hashtag expected, got ${JSON.stringify(cands)}`);
+  assert.ok(cands.some((c) => c.via.startsWith('alias:')));
+});

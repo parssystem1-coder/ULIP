@@ -30,6 +30,8 @@ import type {
 import type { ContentIngestor } from './content.ts';
 
 import { ConnectorNotAvailableError, DiscoveryInputError, parseDiscoveryPayload, toConnectorRequest } from './contracts.ts';
+import type { HashtagBudgetStore } from './hashtag-budget.ts';
+import { extractNumericThreshold } from './candidate-generation.ts';
 
 export type {
   ConnectorNotAvailableError,
@@ -90,6 +92,60 @@ export async function runDiscovery(
   const limit = Math.min(payload.maxCandidates ?? DEFAULT_MAX_CANDIDATES, HARD_MAX_CANDIDATES);
   const request = { ...toConnectorRequest(payload), limit };
 
+  // ---- Phase 21: hashtag budget gate (before ANY network call) -------------
+  // A hashtag-style query consumes the official rolling-7d quota (Meta: 30
+  // unique tags / professional account). The DB is the arbiter; reuse inside
+  // the window is free. Legacy callers without a budget store SKIP honestly.
+  // Filters extracted from the user constraints are post-fetch (exact),
+  // reported per item — never claimed as API-side filtering.
+  // The source config's discoveryMode decides the connector path (same rule
+  // as the INSTAGRAM connector): 'usernames' mode never consumes the hashtag
+  // quota; otherwise a single-tag query does (official Meta cap).
+  const discoveryMode = payload.filters?.['discoveryMode'];
+  const tagRaw = typeof payload.query === 'string' ? payload.query.replace(/^#+/, '').trim() : '';
+  const hashtagQuery = discoveryMode === 'usernames'
+    ? null
+    : tagRaw !== '' && /^[\p{L}\p{N}_]+$/u.test(tagRaw) ? tagRaw : null;
+  let budgetSpent: Awaited<ReturnType<HashtagBudgetStore['spend']>> | null = null;
+  if (hashtagQuery !== null) {
+    if (deps.hashtagBudget === undefined) {
+      throw new DiscoveryInputError(
+        'hashtag discovery requires a configured hashtag budget store — refuse to spend untracked official quota',
+      );
+    }
+    const spend = await deps.hashtagBudget.spend({
+      tenantId: context.tenantId,
+      sourceId: source.id,
+      hashtag: hashtagQuery,
+      ...(context.jobId !== undefined ? { jobId: context.jobId } : {}),
+    });
+    if (!spend.admitted) {
+      throw new ConnectorNotAvailableError(
+        'NOT_CONFIGURED',
+        `HASHTAG_BUDGET_EXHAUSTED — official rolling-7d quota (${spend.budget} unique tags/7d) fully used for this source`,
+      );
+    }
+    budgetSpent = spend;
+    deps.log.info('discovery: hashtag budget admitted', {
+      jobId: context.jobId,
+      tenantId: context.tenantId,
+      sourceId: source.id,
+      hashtag: hashtagQuery,
+      reused: spend.reused,
+      usedInWindow: spend.usedInWindow,
+      budget: spend.budget,
+    });
+  }
+
+  // ---- Phase 21: post-fetch constraint filters (exact, honest) -------------
+  // User constraints like «بیش از ۵۰۰۰ فالوئر» are NOT API-side filters (the
+  // Graph API exposes no such parameter) — they are applied EXACTLY here,
+  // on the fetched numeric data, and the plan labels them POST_FETCH_FILTER.
+  const constraintTexts = (payload.filters?.constraints ?? '').split('|').filter((s) => s.trim() !== '');
+  const numericThreshold = constraintTexts
+    .map(extractNumericThreshold)
+    .find((t) => t !== null) ?? null;
+
   deps.log.info('discovery: connector search starting', {
     jobId: context.jobId,
     requestId: context.requestId,
@@ -119,9 +175,42 @@ export async function runDiscovery(
     updated: 0,
     rawPersisted: 0,
     contentsIngested: 0,
+    ...(budgetSpent !== null
+      ? {
+          hashtag: hashtagQuery ?? '',
+          budgetReused: budgetSpent.reused,
+          budgetUsedInWindow: budgetSpent.usedInWindow,
+          budget: budgetSpent.budget,
+          filteredOut: 0,
+        }
+      : {}),
+  };
+
+  const followersCountOf = (p: Record<string, unknown>): number | null => {
+    for (const key of ['followers_count', 'followersCount', 'followers', 'ig_num_followers']) {
+      const v = p[key];
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+    }
+    return null;
   };
 
   for (const item of result.items) {
+    // Post-fetch exact filter: an item without provable numeric followers
+    // (or below the threshold) is dropped — honest refusal, not silent pass.
+    if (numericThreshold !== null && numericThreshold.field === 'followers') {
+      const followers = followersCountOf(item.payload);
+      if (followers === null || !(followers >= numericThreshold.value)) {
+        outcome.discovered += 1;
+        outcome.filteredOut = (outcome.filteredOut ?? 0) + 1;
+        deps.log.info('discovery: item filtered out by post-fetch constraint', {
+          jobId: context.jobId,
+          externalId: item.externalId,
+          followers,
+          threshold: numericThreshold.value,
+        });
+        continue;
+      }
+    }
     outcome.discovered += 1;
 
     // 1) Raw snapshot — immutable, verbatim, provenance + collectedAt kept.

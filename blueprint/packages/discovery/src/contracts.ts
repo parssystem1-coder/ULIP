@@ -22,6 +22,7 @@ import type {
   SourceMetadata,
 } from '@ulip/connectors';
 import type { ContentIngestor } from './content.ts';
+import type { HashtagBudgetStore } from './hashtag-budget.ts';
 
 export type ConnectorResolutionStatus =
   | 'RESOLVED'
@@ -128,6 +129,16 @@ export interface DiscoveryFlowResult {
   rawPersisted: number;
   /** Phase 18: NEW lead_contents rows persisted from payload posts/media. */
   contentsIngested: number;
+  /** Phase 21 (hashtag jobs only): the normalized tag that was queried. */
+  hashtag?: string | undefined;
+  /** Phase 21: true when the tag was reused within the window (free). */
+  budgetReused?: boolean | undefined;
+  /** Phase 21: unique tags used in the rolling window AFTER this job. */
+  budgetUsedInWindow?: number | undefined;
+  /** Phase 21: the configured window budget (default 30). */
+  budget?: number | undefined;
+  /** Phase 21: items dropped by the exact POST_FETCH followers filter. */
+  filteredOut?: number | undefined;
 }
 
 export interface DiscoveryFlowDeps {
@@ -139,6 +150,12 @@ export interface DiscoveryFlowDeps {
   connectorRegistry: ConnectorRegistry;
   /** Phase 18 content ingestion (absent on legacy callers → skipped). */
   contentIngestor?: ContentIngestor | undefined;
+  /**
+   * Phase 21: persistent rolling-7d hashtag budget. Absent on legacy callers
+   * → a hashtag job fails honestly (DiscoveryInputError) instead of spending
+   * official Meta quota untracked.
+   */
+  hashtagBudget?: HashtagBudgetStore | undefined;
 }
 
 export interface DiscoveryJobPayload {
